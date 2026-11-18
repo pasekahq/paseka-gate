@@ -100,9 +100,9 @@ impl Assessment {
 pub enum OutputKind {
     /// Free text: base A1 (S1).
     FreeText,
-    /// A rendered owner template: no base floor.
+    /// A rendered owner template: no base floor; still A1 without an open mandate.
     Template,
-    /// A shelf share read by the gate: no base floor.
+    /// A shelf share read by the gate: no base floor; still A1 without an open mandate.
     Share,
 }
 
@@ -253,6 +253,8 @@ pub fn assess(rules: &OwnerRules, d: &Draft<'_>) -> Assessment {
     }
     if d.open_mandate && a.flags.is_empty() {
         a.required = Required::Level(Level::A0);
+    } else {
+        a.raise(Required::Level(Level::A1));
     }
     a
 }

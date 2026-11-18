@@ -78,7 +78,7 @@ fn flags_carry_the_matched_byte_range() {
 }
 
 #[test]
-fn free_text_needs_a1_structured_a0_and_any_flag_a2() {
+fn free_text_needs_a1_templates_a0_only_under_a_mandate_and_any_flag_a2() {
     let r = OwnerRules::default();
     assert_eq!(
         assess(&r, &free("sounds good")).required,
@@ -87,6 +87,11 @@ fn free_text_needs_a1_structured_a0_and_any_flag_a2() {
     let s = Draft {
         kind: OutputKind::Template,
         ..free("yes")
+    };
+    assert_eq!(assess(&r, &s).required, Required::Level(Level::A1));
+    let s = Draft {
+        open_mandate: true,
+        ..s
     };
     assert_eq!(assess(&r, &s).required, Required::Level(Level::A0));
     let s = Draft {

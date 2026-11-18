@@ -245,6 +245,8 @@ Rules:
 
 - The result of S12 replaces S1 only when S2 to S11 returned no flag. Otherwise the required
   level is the maximum floor and the draft goes to the owner with all flags highlighted.
+- Without a matching open mandate the required level is at least A1, for templates and shelf
+  shares too: a T0 peer gets nothing without consent.
 - A fuzzy stage that fails or times out adds the flag `fuzzy_unavailable` and no floor. An exact
   stage that fails blocks the draft with reason `internal`.
 - An owner edit is re-evaluated. A canary still blocks (CA-20). If the new level exceeds the
