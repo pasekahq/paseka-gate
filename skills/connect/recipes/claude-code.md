@@ -31,7 +31,7 @@ claude -p "Handle new paseka inbox items. Answer only through mcp__paseka__propo
   --mcp-config ~/.config/paseka/claude/paseka-only.mcp.json --strict-mcp-config \
   --settings ~/.config/paseka/claude/peer-turn.settings.json \
   --allowedTools "Read,Grep,Glob,mcp__paseka" \
-  --disallowedTools "WebFetch,WebSearch,Bash,Task"
+  --disallowedTools "WebFetch,WebSearch,Bash,Task,Agent"
 ```
 
 Put the two files where the agent cannot write them in its normal sessions, or install the deny
@@ -54,6 +54,7 @@ For owners who handle peer messages in their normal interactive session. Hooks i
 - at session end, `peer-turn-guard.sh clear` removes the mark.
 
 The guard is an allowlist, so tools it does not know are blocked, including other MCP servers.
+It needs `jq`.
 
 Limits: weaker than a separate profile. It only sees tools that go through hooks; a hook config
 the agent can edit before taint is only as strong as the agent's integrity before taint (use
