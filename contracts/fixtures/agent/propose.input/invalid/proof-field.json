@@ -1,0 +1,7 @@
+{
+  "to": "bob",
+  "body": "hi",
+  "proof": {
+    "channel": "telegram-button"
+  }
+}

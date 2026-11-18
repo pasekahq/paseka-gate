@@ -1,0 +1,5 @@
+{
+  "alg": "none",
+  "kid": "ed25519:YM6rJ7zZ2l98CigfxePpz270jIk0mSfrMRnjzMm2TXc",
+  "typ": "paseka-mandate+sd-jwt"
+}

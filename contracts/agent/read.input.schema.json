@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pasekahq.example.org/contracts/v1/agent/read.input.schema.json",
+  "title": "read input",
+  "type": "object",
+  "properties": {
+    "message_id": {
+      "$ref": "../common.schema.json#/$defs/message_id"
+    }
+  },
+  "required": [
+    "message_id"
+  ],
+  "additionalProperties": false
+}

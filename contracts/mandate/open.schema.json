@@ -1,0 +1,251 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pasekahq.example.org/contracts/v1/mandate/open.schema.json",
+  "title": "Open mandate claims: consent in advance for a class of messages",
+  "type": "object",
+  "required": [
+    "v",
+    "kind",
+    "iss",
+    "tenant",
+    "to",
+    "jti",
+    "iat",
+    "nbf",
+    "exp",
+    "trust",
+    "signed_at_level",
+    "constraints",
+    "proof"
+  ],
+  "properties": {
+    "v": {
+      "$ref": "../common.schema.json#/$defs/v"
+    },
+    "kind": {
+      "const": "open"
+    },
+    "iss": {
+      "$ref": "../common.schema.json#/$defs/key_id"
+    },
+    "tenant": {
+      "$ref": "../common.schema.json#/$defs/tenant_id"
+    },
+    "to": {
+      "$ref": "../common.schema.json#/$defs/key_id"
+    },
+    "jti": {
+      "$ref": "../common.schema.json#/$defs/mandate_id"
+    },
+    "iat": {
+      "$ref": "../common.schema.json#/$defs/unix_time"
+    },
+    "nbf": {
+      "$ref": "../common.schema.json#/$defs/unix_time"
+    },
+    "exp": {
+      "$ref": "../common.schema.json#/$defs/unix_time"
+    },
+    "trust": {
+      "enum": [
+        "T1",
+        "T2",
+        "T3",
+        "conversation"
+      ]
+    },
+    "signed_at_level": {
+      "enum": [
+        "A2",
+        "A2+",
+        "A3"
+      ]
+    },
+    "constraints": {
+      "type": "object",
+      "required": [
+        "rate"
+      ],
+      "properties": {
+        "templates": {
+          "type": "array",
+          "items": {
+            "$ref": "../common.schema.json#/$defs/template_id"
+          },
+          "minItems": 1
+        },
+        "max_len": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65536
+        },
+        "attachments": {
+          "enum": [
+            "none",
+            "shelf"
+          ]
+        },
+        "private_sources": {
+          "enum": [
+            "deny",
+            "allow"
+          ]
+        },
+        "rate": {
+          "type": "object",
+          "properties": {
+            "max_messages": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "per_hour": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "per_day": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "minProperties": 1
+        },
+        "topics": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
+        "shelves": {
+          "type": "array",
+          "items": {
+            "$ref": "../common.schema.json#/$defs/shelf_id"
+          },
+          "minItems": 1
+        },
+        "thread": {
+          "$ref": "../common.schema.json#/$defs/thread_id"
+        }
+      }
+    },
+    "proof": {
+      "type": "object",
+      "required": [
+        "channel",
+        "approved_at",
+        "evidence_sha256"
+      ],
+      "properties": {
+        "channel": {
+          "enum": [
+            "telegram-miniapp",
+            "telegram-miniapp-biometric",
+            "passkey"
+          ]
+        },
+        "approved_at": {
+          "$ref": "../common.schema.json#/$defs/unix_time"
+        },
+        "evidence_sha256": {
+          "$ref": "../common.schema.json#/$defs/sha256"
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "trust": {
+            "const": "T1"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "constraints": {
+            "required": [
+              "templates",
+              "max_len"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "trust": {
+            "const": "T2"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "constraints": {
+            "required": [
+              "shelves"
+            ],
+            "properties": {
+              "attachments": {
+                "const": "shelf"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "trust": {
+            "const": "T3"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "constraints": {
+            "required": [
+              "topics",
+              "max_len"
+            ],
+            "properties": {
+              "rate": {
+                "required": [
+                  "per_day"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "trust": {
+            "const": "conversation"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "constraints": {
+            "required": [
+              "thread"
+            ],
+            "properties": {
+              "rate": {
+                "required": [
+                  "max_messages"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

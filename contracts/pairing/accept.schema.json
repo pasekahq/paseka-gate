@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pasekahq.example.org/contracts/v1/pairing/accept.schema.json",
+  "title": "pair.accept payload (JWS typ paseka-pair+jwt, signed by the inviter key)",
+  "type": "object",
+  "required": [
+    "v",
+    "type",
+    "id",
+    "iss",
+    "aud",
+    "request_id",
+    "request_sha256",
+    "endpoint",
+    "iat"
+  ],
+  "properties": {
+    "v": {
+      "$ref": "../common.schema.json#/$defs/v"
+    },
+    "type": {
+      "const": "pair.accept"
+    },
+    "id": {
+      "$ref": "../common.schema.json#/$defs/pairing_id"
+    },
+    "iss": {
+      "$ref": "../common.schema.json#/$defs/key_id"
+    },
+    "aud": {
+      "$ref": "../common.schema.json#/$defs/key_id"
+    },
+    "request_id": {
+      "$ref": "../common.schema.json#/$defs/pairing_id"
+    },
+    "request_sha256": {
+      "$ref": "../common.schema.json#/$defs/sha256"
+    },
+    "endpoint": {
+      "$ref": "../common.schema.json#/$defs/https_url"
+    },
+    "iat": {
+      "$ref": "../common.schema.json#/$defs/unix_time"
+    }
+  }
+}

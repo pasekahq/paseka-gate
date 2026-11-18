@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pasekahq.example.org/contracts/v1/agent/inbox.input.schema.json",
+  "title": "inbox input",
+  "type": "object",
+  "properties": {
+    "since": {
+      "$ref": "../common.schema.json#/$defs/cursor"
+    },
+    "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100
+    },
+    "peer": {
+      "$ref": "../common.schema.json#/$defs/peer_handle"
+    }
+  },
+  "required": [],
+  "additionalProperties": false
+}

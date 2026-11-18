@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pasekahq.example.org/contracts/v1/wire/error.schema.json",
+  "title": "Gate-to-gate error response",
+  "type": "object",
+  "required": [
+    "error"
+  ],
+  "properties": {
+    "error": {
+      "type": "object",
+      "required": [
+        "code",
+        "message",
+        "retryable"
+      ],
+      "properties": {
+        "code": {
+          "enum": [
+            "malformed",
+            "bad_signature",
+            "not_paired",
+            "pairing_pending",
+            "conflict",
+            "mandate_replay",
+            "too_large",
+            "stale",
+            "from_future",
+            "unsupported",
+            "mandate_invalid",
+            "invite_invalid",
+            "rate_limited",
+            "internal",
+            "unavailable"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "retryable": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

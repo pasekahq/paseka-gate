@@ -1,0 +1,11 @@
+{
+  "to": "bob",
+  "body": "Bob thinks the plan is fine.\nSee you on Monday.",
+  "in_reply_to": "m_01JD0000000000000000000001",
+  "sources": [
+    {
+      "kind": "agent",
+      "ref": "notes/plan.md"
+    }
+  ]
+}

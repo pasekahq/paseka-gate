@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pasekahq.example.org/contracts/v1/wire/receipt.schema.json",
+  "title": "Delivery receipt payload (JWS typ paseka-receipt+jwt)",
+  "type": "object",
+  "required": [
+    "v",
+    "iss",
+    "aud",
+    "id",
+    "envelope_sha256",
+    "received_at",
+    "status"
+  ],
+  "properties": {
+    "v": {
+      "$ref": "../common.schema.json#/$defs/v"
+    },
+    "iss": {
+      "$ref": "../common.schema.json#/$defs/key_id"
+    },
+    "aud": {
+      "$ref": "../common.schema.json#/$defs/key_id"
+    },
+    "id": {
+      "$ref": "../common.schema.json#/$defs/event_id"
+    },
+    "envelope_sha256": {
+      "$ref": "../common.schema.json#/$defs/sha256"
+    },
+    "received_at": {
+      "$ref": "../common.schema.json#/$defs/unix_time"
+    },
+    "status": {
+      "enum": [
+        "accepted",
+        "duplicate"
+      ]
+    }
+  }
+}

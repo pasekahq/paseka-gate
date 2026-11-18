@@ -1,0 +1,6 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pasekahq.example.org/contracts/v1/agent/share.output.schema.json",
+  "$ref": "views.schema.json#/$defs/DraftView",
+  "title": "share output"
+}

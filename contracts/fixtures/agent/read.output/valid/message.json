@@ -1,0 +1,11 @@
+{
+  "message_id": "m_01JD0000000000000000000001",
+  "origin": "peer",
+  "from": "bob",
+  "thread": "th_01JD0000000000000000000001",
+  "received_at": 1794268800,
+  "body": "What does alice think about the plan?",
+  "attachments": [],
+  "sender_level": "A1",
+  "sender_channel": "telegram-button"
+}

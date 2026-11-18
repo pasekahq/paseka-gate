@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pasekahq.example.org/contracts/v1/mandate/closed.schema.json",
+  "title": "Closed mandate claims: consent for one exact message",
+  "type": "object",
+  "required": [
+    "v",
+    "kind",
+    "iss",
+    "tenant",
+    "to",
+    "jti",
+    "iat",
+    "exp",
+    "nonce",
+    "thread",
+    "in_reply_to",
+    "content_sha256",
+    "attachments",
+    "release_digest",
+    "level",
+    "proof"
+  ],
+  "properties": {
+    "v": {
+      "$ref": "../common.schema.json#/$defs/v"
+    },
+    "kind": {
+      "const": "closed"
+    },
+    "iss": {
+      "$ref": "../common.schema.json#/$defs/key_id"
+    },
+    "tenant": {
+      "$ref": "../common.schema.json#/$defs/tenant_id"
+    },
+    "to": {
+      "$ref": "../common.schema.json#/$defs/key_id"
+    },
+    "jti": {
+      "$ref": "../common.schema.json#/$defs/mandate_id"
+    },
+    "iat": {
+      "$ref": "../common.schema.json#/$defs/unix_time"
+    },
+    "exp": {
+      "$ref": "../common.schema.json#/$defs/unix_time"
+    },
+    "nonce": {
+      "$ref": "../common.schema.json#/$defs/nonce"
+    },
+    "thread": {
+      "$ref": "../common.schema.json#/$defs/thread_id"
+    },
+    "in_reply_to": {
+      "oneOf": [
+        {
+          "$ref": "../common.schema.json#/$defs/event_id"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "content_sha256": {
+      "$ref": "../common.schema.json#/$defs/sha256"
+    },
+    "attachments": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "$ref": "../common.schema.json#/$defs/attachment_meta"
+      }
+    },
+    "release_digest": {
+      "$ref": "../common.schema.json#/$defs/sha256"
+    },
+    "level": {
+      "$ref": "../common.schema.json#/$defs/level"
+    },
+    "proof": {
+      "type": "object",
+      "required": [
+        "channel",
+        "approved_at",
+        "evidence_sha256"
+      ],
+      "properties": {
+        "channel": {
+          "$ref": "../common.schema.json#/$defs/channel"
+        },
+        "approved_at": {
+          "$ref": "../common.schema.json#/$defs/unix_time"
+        },
+        "evidence_sha256": {
+          "$ref": "../common.schema.json#/$defs/sha256"
+        },
+        "open_mandate": {
+          "$ref": "../common.schema.json#/$defs/mandate_id"
+        },
+        "evidence": {
+          "type": "object",
+          "description": "Publicly verifiable evidence (A3)."
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "level": {
+            "const": "A0"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "proof": {
+            "required": [
+              "open_mandate"
+            ],
+            "properties": {
+              "channel": {
+                "const": "open-mandate"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "level": {
+            "enum": [
+              "A1",
+              "A2",
+              "A2+",
+              "A3"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "proof": {
+            "properties": {
+              "channel": {
+                "not": {
+                  "const": "open-mandate"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

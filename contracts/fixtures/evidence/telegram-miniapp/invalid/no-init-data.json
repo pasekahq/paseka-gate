@@ -1,0 +1,17 @@
+{
+  "v": 1,
+  "channel": "telegram-miniapp",
+  "level": "A2",
+  "tenant": "t_01JD0000000000000000000001",
+  "request_id": "r_01JD0000000000000000000001",
+  "nonce": "AAECAwQFBgcICQoLDA0ODw",
+  "challenge": "88691727e8c7748e5a6c75c97b17fe606bc428f1cc09fe3c7fe5dd5ca77fe45c",
+  "decision": "approve",
+  "received_at": 1794268860,
+  "bot_id": 1000001,
+  "approver_user_id": 2000001,
+  "init_data_sha256": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+  "auth_date": 1794268840,
+  "telegram_env": "production",
+  "edited": false
+}

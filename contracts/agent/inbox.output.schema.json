@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pasekahq.example.org/contracts/v1/agent/inbox.output.schema.json",
+  "title": "inbox output",
+  "type": "object",
+  "required": [
+    "items",
+    "next"
+  ],
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "views.schema.json#/$defs/InboxItem"
+      }
+    },
+    "next": {
+      "oneOf": [
+        {
+          "$ref": "../common.schema.json#/$defs/cursor"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  }
+}

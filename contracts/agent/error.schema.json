@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pasekahq.example.org/contracts/v1/agent/error.schema.json",
+  "title": "Agent tool error",
+  "type": "object",
+  "required": [
+    "error"
+  ],
+  "properties": {
+    "error": {
+      "type": "object",
+      "required": [
+        "code",
+        "message",
+        "retryable"
+      ],
+      "properties": {
+        "code": {
+          "enum": [
+            "invalid_input",
+            "not_found",
+            "unknown_peer",
+            "invalid_state",
+            "revision_conflict",
+            "too_large",
+            "rate_limited",
+            "unavailable",
+            "internal"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "retryable": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

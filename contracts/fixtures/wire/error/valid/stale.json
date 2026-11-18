@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": "stale",
+    "message": "event too old",
+    "retryable": false
+  }
+}

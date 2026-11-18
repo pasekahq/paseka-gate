@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pasekahq.example.org/contracts/v1/evidence/telegram-button.schema.json",
+  "title": "A1 evidence: inline button in the consent bot",
+  "type": "object",
+  "required": [
+    "v",
+    "channel",
+    "level",
+    "tenant",
+    "request_id",
+    "nonce",
+    "challenge",
+    "decision",
+    "received_at",
+    "bot_id",
+    "chat_id",
+    "message_id",
+    "approver_user_id",
+    "callback_query_id",
+    "update_id"
+  ],
+  "properties": {
+    "v": {
+      "$ref": "../common.schema.json#/$defs/v"
+    },
+    "tenant": {
+      "$ref": "../common.schema.json#/$defs/tenant_id"
+    },
+    "request_id": {
+      "$ref": "../common.schema.json#/$defs/request_id"
+    },
+    "nonce": {
+      "$ref": "../common.schema.json#/$defs/nonce"
+    },
+    "challenge": {
+      "$ref": "../common.schema.json#/$defs/sha256"
+    },
+    "decision": {
+      "$ref": "../common.schema.json#/$defs/decision"
+    },
+    "received_at": {
+      "$ref": "../common.schema.json#/$defs/unix_time"
+    },
+    "channel": {
+      "const": "telegram-button"
+    },
+    "level": {
+      "const": "A1"
+    },
+    "bot_id": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "chat_id": {
+      "type": "integer"
+    },
+    "message_id": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "approver_user_id": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "callback_query_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "update_id": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}
