@@ -20,7 +20,10 @@ fn free(text: &str) -> Draft<'_> {
 
 #[test]
 fn plain_prose_has_no_structural_flags() {
-    assert!(kinds("I think the plan for 2026-11-18 is fine, see you at 18:00.").is_empty());
+    assert_eq!(
+        kinds("I think the plan for 2026-11-18 is fine, see you at 18:00."),
+        vec![]
+    );
 }
 
 #[test]
