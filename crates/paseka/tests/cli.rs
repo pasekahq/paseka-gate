@@ -6,7 +6,7 @@ fn paseka(args: &[&str]) -> std::process::Output {
     Command::new(env!("CARGO_BIN_EXE_paseka"))
         .args(args)
         .output()
-        .unwrap()
+        .expect("paseka binary runs")
 }
 
 #[test]
