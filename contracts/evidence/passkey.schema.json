@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pasekahq.example.org/contracts/v1/evidence/passkey.schema.json",
+  "title": "A3 evidence (reserved, later): WebAuthn assertion over the approval challenge",
+  "type": "object",
+  "required": [
+    "v",
+    "channel",
+    "level",
+    "tenant",
+    "request_id",
+    "nonce",
+    "challenge",
+    "decision",
+    "received_at",
+    "credential_id",
+    "authenticator_data",
+    "client_data_json",
+    "signature"
+  ],
+  "properties": {
+    "v": {
+      "$ref": "../common.schema.json#/$defs/v"
+    },
+    "tenant": {
+      "$ref": "../common.schema.json#/$defs/tenant_id"
+    },
+    "request_id": {
+      "$ref": "../common.schema.json#/$defs/request_id"
+    },
+    "nonce": {
+      "$ref": "../common.schema.json#/$defs/nonce"
+    },
+    "challenge": {
+      "$ref": "../common.schema.json#/$defs/sha256"
+    },
+    "decision": {
+      "$ref": "../common.schema.json#/$defs/decision"
+    },
+    "received_at": {
+      "$ref": "../common.schema.json#/$defs/unix_time"
+    },
+    "channel": {
+      "const": "passkey"
+    },
+    "level": {
+      "const": "A3"
+    },
+    "credential_id": {
+      "$ref": "../common.schema.json#/$defs/b64u"
+    },
+    "authenticator_data": {
+      "$ref": "../common.schema.json#/$defs/b64u"
+    },
+    "client_data_json": {
+      "$ref": "../common.schema.json#/$defs/b64u"
+    },
+    "signature": {
+      "$ref": "../common.schema.json#/$defs/b64u"
+    }
+  }
+}

@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pasekahq.example.org/contracts/v1/wire/envelope.schema.json",
+  "title": "Gate-to-gate envelope payload (JWS typ paseka-envelope+jwt)",
+  "type": "object",
+  "required": [
+    "v",
+    "iss",
+    "aud",
+    "id",
+    "type",
+    "iat",
+    "data"
+  ],
+  "properties": {
+    "v": {
+      "$ref": "../common.schema.json#/$defs/v"
+    },
+    "iss": {
+      "$ref": "../common.schema.json#/$defs/key_id"
+    },
+    "aud": {
+      "$ref": "../common.schema.json#/$defs/key_id"
+    },
+    "id": {
+      "$ref": "../common.schema.json#/$defs/event_id"
+    },
+    "type": {
+      "enum": [
+        "message",
+        "pair.confirmed",
+        "unpair"
+      ]
+    },
+    "iat": {
+      "$ref": "../common.schema.json#/$defs/unix_time"
+    },
+    "data": {
+      "type": "object"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "message"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/message"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "pair.confirmed"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": [
+              "request_id"
+            ],
+            "properties": {
+              "request_id": {
+                "$ref": "../common.schema.json#/$defs/pairing_id"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "unpair"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": [
+              "reason"
+            ],
+            "properties": {
+              "reason": {
+                "type": "string",
+                "maxLength": 200
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "message": {
+      "type": "object",
+      "required": [
+        "thread",
+        "in_reply_to",
+        "body",
+        "attachments",
+        "mandate"
+      ],
+      "properties": {
+        "thread": {
+          "$ref": "../common.schema.json#/$defs/thread_id"
+        },
+        "in_reply_to": {
+          "oneOf": [
+            {
+              "$ref": "../common.schema.json#/$defs/event_id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "body": {
+          "$ref": "../common.schema.json#/$defs/body"
+        },
+        "attachments": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "allOf": [
+              {
+                "$ref": "../common.schema.json#/$defs/attachment_meta"
+              }
+            ],
+            "required": [
+              "data"
+            ],
+            "properties": {
+              "data": {
+                "$ref": "../common.schema.json#/$defs/b64u"
+              }
+            }
+          }
+        },
+        "mandate": {
+          "$ref": "../common.schema.json#/$defs/sd_jwt"
+        }
+      }
+    }
+  }
+}

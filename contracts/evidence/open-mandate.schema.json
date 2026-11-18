@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pasekahq.example.org/contracts/v1/evidence/open-mandate.schema.json",
+  "title": "A0 evidence: release under an owner-signed open mandate",
+  "type": "object",
+  "required": [
+    "v",
+    "channel",
+    "level",
+    "tenant",
+    "open_mandate",
+    "open_mandate_sha256",
+    "counter",
+    "evaluated_at"
+  ],
+  "properties": {
+    "v": {
+      "$ref": "../common.schema.json#/$defs/v"
+    },
+    "channel": {
+      "const": "open-mandate"
+    },
+    "level": {
+      "const": "A0"
+    },
+    "tenant": {
+      "$ref": "../common.schema.json#/$defs/tenant_id"
+    },
+    "open_mandate": {
+      "$ref": "../common.schema.json#/$defs/mandate_id"
+    },
+    "open_mandate_sha256": {
+      "$ref": "../common.schema.json#/$defs/sha256"
+    },
+    "counter": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Ordinal of this release under the mandate."
+    },
+    "evaluated_at": {
+      "$ref": "../common.schema.json#/$defs/unix_time"
+    }
+  }
+}

@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pasekahq.example.org/contracts/v1/agent/propose.input.schema.json",
+  "title": "propose input",
+  "type": "object",
+  "properties": {
+    "to": {
+      "$ref": "../common.schema.json#/$defs/peer_handle"
+    },
+    "body": {
+      "$ref": "../common.schema.json#/$defs/body"
+    },
+    "template": {
+      "type": "object",
+      "required": [
+        "id",
+        "fields"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "../common.schema.json#/$defs/template_id"
+        },
+        "fields": {
+          "type": "object",
+          "maxProperties": 32,
+          "additionalProperties": {
+            "type": [
+              "string",
+              "integer"
+            ]
+          }
+        }
+      }
+    },
+    "in_reply_to": {
+      "$ref": "../common.schema.json#/$defs/message_id"
+    },
+    "attachments": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "media_type",
+          "data"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "$ref": "../common.schema.json#/$defs/attachment_name"
+          },
+          "media_type": {
+            "$ref": "../common.schema.json#/$defs/media_type"
+          },
+          "data": {
+            "$ref": "../common.schema.json#/$defs/b64u",
+            "maxLength": 2796203
+          }
+        }
+      }
+    },
+    "sources": {
+      "type": "array",
+      "maxItems": 32,
+      "items": {
+        "type": "object",
+        "required": [
+          "kind",
+          "ref"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "agent"
+          },
+          "ref": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "to"
+  ],
+  "additionalProperties": false,
+  "oneOf": [
+    {
+      "required": [
+        "body"
+      ]
+    },
+    {
+      "required": [
+        "template"
+      ]
+    }
+  ]
+}

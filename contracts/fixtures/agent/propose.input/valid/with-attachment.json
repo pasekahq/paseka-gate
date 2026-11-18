@@ -1,0 +1,11 @@
+{
+  "to": "carol",
+  "body": "See attached.",
+  "attachments": [
+    {
+      "name": "a.txt",
+      "media_type": "text/plain",
+      "data": "aGVsbG8"
+    }
+  ]
+}

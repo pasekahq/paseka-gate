@@ -1,0 +1,158 @@
+{
+  "description": "Test vectors for PROTOCOL sections 3.2, 3.3, 11. Synthetic data.",
+  "release_digest": [
+    {
+      "input": {
+        "tenant": "t_01JD0000000000000000000001",
+        "iss": "ed25519:YM6rJ7zZ2l98CigfxePpz270jIk0mSfrMRnjzMm2TXc",
+        "to": "ed25519:ZT6_6_EUEkd5szcRy6DJ6HLUSUhLFZsKp3xfSslZCd0",
+        "thread": "th_01JD0000000000000000000001",
+        "in_reply_to": "e_01JD0000000000000000000001",
+        "body": "Bob thinks the plan is fine.\nSee you on Monday.",
+        "body_utf8_hex": "426f62207468696e6b732074686520706c616e2069732066696e652e0a53656520796f75206f6e204d6f6e6461792e",
+        "attachments": []
+      },
+      "content_sha256": "2c96bdd5224cdbb28ba000ab47f6b661be3980664a4de4b4dfdd2c1fd7b57bf1",
+      "release_digest": "c1f37bc3c7ab8f622dc1861e949fcc62c3d860111050b6c2163a654ac35d5d2a"
+    },
+    {
+      "input": {
+        "tenant": "t_01JD0000000000000000000002",
+        "iss": "ed25519:ZT6_6_EUEkd5szcRy6DJ6HLUSUhLFZsKp3xfSslZCd0",
+        "to": "ed25519:0C8j-MbvIkEsv0Gz_a89zP5dzeb5dbhfnmd9r1zh8ts",
+        "thread": "th_01JD0000000000000000000002",
+        "in_reply_to": null,
+        "body": "Привет, carol! Notes attached ✓",
+        "body_utf8_hex": "d09fd180d0b8d0b2d0b5d1822c206361726f6c21204e6f74657320617474616368656420e29c93",
+        "attachments": [
+          {
+            "name": "notes.md",
+            "media_type": "text/markdown",
+            "size": 24,
+            "sha256": "b9c20a1bfb9d03568f2db14b7db4b62f160a749a5846fddbfe72a1d6c189d14f",
+            "data": "IyBOb3RlcwoKU2hlbGYgc2VjdGlvbi4K"
+          },
+          {
+            "name": "empty.bin",
+            "media_type": "application/octet-stream",
+            "size": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "data": ""
+          }
+        ]
+      },
+      "content_sha256": "944b69207ac27c5e45db25545231f4af0c86cc79d6637ff0c87f0d17e92cf992",
+      "release_digest": "95dde9a6b66add40d520f5d2da01763d957595d005bddf04753fd950ca2d72cc"
+    }
+  ],
+  "approval_challenge": [
+    {
+      "input": {
+        "tenant": "t_01JD0000000000000000000001",
+        "request_id": "r_01JD0000000000000000000001",
+        "release_digest": "c1f37bc3c7ab8f622dc1861e949fcc62c3d860111050b6c2163a654ac35d5d2a",
+        "nonce": "AAECAwQFBgcICQoLDA0ODw",
+        "level": "A1"
+      },
+      "challenge": "8fc152ef0e1de0d523e309757f77de424bdffb950671a65f65ebddf1a3f929d6"
+    }
+  ],
+  "sas": [
+    {
+      "input": {
+        "inviter_key": "ed25519:YM6rJ7zZ2l98CigfxePpz270jIk0mSfrMRnjzMm2TXc",
+        "invitee_key": "ed25519:ZT6_6_EUEkd5szcRy6DJ6HLUSUhLFZsKp3xfSslZCd0",
+        "code": "ZGVmZ2hpamtsbW5vcHFycw"
+      },
+      "sas": "700697"
+    }
+  ],
+  "signing_keys": {
+    "description": "Ed25519 seed = SHA-256('paseka test key <name>'). Test only.",
+    "alice": {
+      "seed_hex": "0a8a5ac2adc60913f7b8e49a0498bd03e79f090406065323ee16b4b5ef4d9191",
+      "key_id": "ed25519:YM6rJ7zZ2l98CigfxePpz270jIk0mSfrMRnjzMm2TXc"
+    },
+    "bob": {
+      "seed_hex": "be57527c21d1f19646b6ad30e90398bba51d02422ba79b0c0e29cdc21e693bc8",
+      "key_id": "ed25519:ZT6_6_EUEkd5szcRy6DJ6HLUSUhLFZsKp3xfSslZCd0"
+    },
+    "carol": {
+      "seed_hex": "18e27a299ee524119d4d6cee2c93b29acecf66765739e477b3132e5f9f0fe356",
+      "key_id": "ed25519:0C8j-MbvIkEsv0Gz_a89zP5dzeb5dbhfnmd9r1zh8ts"
+    }
+  },
+  "signed": {
+    "evidence_bytes_utf8": "{\"v\":1,\"channel\":\"telegram-button\",\"level\":\"A1\",\"tenant\":\"t_01JD0000000000000000000001\",\"request_id\":\"r_01JD0000000000000000000001\",\"nonce\":\"AAECAwQFBgcICQoLDA0ODw\",\"challenge\":\"8fc152ef0e1de0d523e309757f77de424bdffb950671a65f65ebddf1a3f929d6\",\"decision\":\"approve\",\"received_at\":1794268830,\"bot_id\":1000001,\"chat_id\":2000001,\"message_id\":42,\"approver_user_id\":2000001,\"callback_query_id\":\"4200000000000000001\",\"update_id\":900001}",
+    "closed_mandate": {
+      "claims": {
+        "v": 1,
+        "kind": "closed",
+        "iss": "ed25519:YM6rJ7zZ2l98CigfxePpz270jIk0mSfrMRnjzMm2TXc",
+        "tenant": "t_01JD0000000000000000000001",
+        "to": "ed25519:ZT6_6_EUEkd5szcRy6DJ6HLUSUhLFZsKp3xfSslZCd0",
+        "jti": "md_01JD0000000000000000000001",
+        "iat": 1794268830,
+        "exp": 1794268890,
+        "nonce": "AAECAwQFBgcICQoLDA0ODw",
+        "thread": "th_01JD0000000000000000000001",
+        "in_reply_to": "e_01JD0000000000000000000001",
+        "content_sha256": "2c96bdd5224cdbb28ba000ab47f6b661be3980664a4de4b4dfdd2c1fd7b57bf1",
+        "attachments": [],
+        "release_digest": "c1f37bc3c7ab8f622dc1861e949fcc62c3d860111050b6c2163a654ac35d5d2a",
+        "level": "A1",
+        "proof": {
+          "channel": "telegram-button",
+          "approved_at": 1794268830,
+          "evidence_sha256": "b93459b77ee8d66d857d27d76d733d447337537fe1f6fd76b1680f28bfdf6959"
+        }
+      },
+      "compact": "eyJhbGciOiJFZERTQSIsImtpZCI6ImVkMjU1MTk6WU02cko3eloybDk4Q2lnZnhlUHB6MjcwaklrMG1TZnJNUm5qek1tMlRYYyIsInR5cCI6InBhc2VrYS1tYW5kYXRlK3NkLWp3dCJ9.eyJ2IjoxLCJraW5kIjoiY2xvc2VkIiwiaXNzIjoiZWQyNTUxOTpZTTZySjd6WjJsOThDaWdmeGVQcHoyNzBqSWswbVNmck1Sbmp6TW0yVFhjIiwidGVuYW50IjoidF8wMUpEMDAwMDAwMDAwMDAwMDAwMDAwMDAwMSIsInRvIjoiZWQyNTUxOTpaVDZfNl9FVUVrZDVzemNSeTZESjZITFVTVWhMRlpzS3AzeGZTc2xaQ2QwIiwianRpIjoibWRfMDFKRDAwMDAwMDAwMDAwMDAwMDAwMDAwMDEiLCJpYXQiOjE3OTQyNjg4MzAsImV4cCI6MTc5NDI2ODg5MCwibm9uY2UiOiJBQUVDQXdRRkJnY0lDUW9MREEwT0R3IiwidGhyZWFkIjoidGhfMDFKRDAwMDAwMDAwMDAwMDAwMDAwMDAwMDEiLCJpbl9yZXBseV90byI6ImVfMDFKRDAwMDAwMDAwMDAwMDAwMDAwMDAwMDEiLCJjb250ZW50X3NoYTI1NiI6IjJjOTZiZGQ1MjI0Y2RiYjI4YmEwMDBhYjQ3ZjZiNjYxYmUzOTgwNjY0YTRkZTRiNGRmZGQyYzFmZDdiNTdiZjEiLCJhdHRhY2htZW50cyI6W10sInJlbGVhc2VfZGlnZXN0IjoiYzFmMzdiYzNjN2FiOGY2MjJkYzE4NjFlOTQ5ZmNjNjJjM2Q4NjAxMTEwNTBiNmMyMTYzYTY1NGFjMzVkNWQyYSIsImxldmVsIjoiQTEiLCJwcm9vZiI6eyJjaGFubmVsIjoidGVsZWdyYW0tYnV0dG9uIiwiYXBwcm92ZWRfYXQiOjE3OTQyNjg4MzAsImV2aWRlbmNlX3NoYTI1NiI6ImI5MzQ1OWI3N2VlOGQ2NmQ4NTdkMjdkNzZkNzMzZDQ0NzMzNzUzN2ZlMWY2ZmQ3NmIxNjgwZjI4YmZkZjY5NTkifX0.IeidH1XT7eBI2-WrcCNIO-fFscSBBGQmw575Ok1GS8QwZvcnpTzWmmXkmNNO7lKOhr1ZOlQkv1UrfyuFhSLEAQ~"
+    },
+    "envelope": {
+      "payload": {
+        "v": 1,
+        "iss": "ed25519:YM6rJ7zZ2l98CigfxePpz270jIk0mSfrMRnjzMm2TXc",
+        "aud": "ed25519:ZT6_6_EUEkd5szcRy6DJ6HLUSUhLFZsKp3xfSslZCd0",
+        "id": "e_01JD0000000000000000000002",
+        "type": "message",
+        "iat": 1794268830,
+        "data": {
+          "thread": "th_01JD0000000000000000000001",
+          "in_reply_to": "e_01JD0000000000000000000001",
+          "body": "Bob thinks the plan is fine.\nSee you on Monday.",
+          "attachments": [],
+          "mandate": "eyJhbGciOiJFZERTQSIsImtpZCI6ImVkMjU1MTk6WU02cko3eloybDk4Q2lnZnhlUHB6MjcwaklrMG1TZnJNUm5qek1tMlRYYyIsInR5cCI6InBhc2VrYS1tYW5kYXRlK3NkLWp3dCJ9.eyJ2IjoxLCJraW5kIjoiY2xvc2VkIiwiaXNzIjoiZWQyNTUxOTpZTTZySjd6WjJsOThDaWdmeGVQcHoyNzBqSWswbVNmck1Sbmp6TW0yVFhjIiwidGVuYW50IjoidF8wMUpEMDAwMDAwMDAwMDAwMDAwMDAwMDAwMSIsInRvIjoiZWQyNTUxOTpaVDZfNl9FVUVrZDVzemNSeTZESjZITFVTVWhMRlpzS3AzeGZTc2xaQ2QwIiwianRpIjoibWRfMDFKRDAwMDAwMDAwMDAwMDAwMDAwMDAwMDEiLCJpYXQiOjE3OTQyNjg4MzAsImV4cCI6MTc5NDI2ODg5MCwibm9uY2UiOiJBQUVDQXdRRkJnY0lDUW9MREEwT0R3IiwidGhyZWFkIjoidGhfMDFKRDAwMDAwMDAwMDAwMDAwMDAwMDAwMDEiLCJpbl9yZXBseV90byI6ImVfMDFKRDAwMDAwMDAwMDAwMDAwMDAwMDAwMDEiLCJjb250ZW50X3NoYTI1NiI6IjJjOTZiZGQ1MjI0Y2RiYjI4YmEwMDBhYjQ3ZjZiNjYxYmUzOTgwNjY0YTRkZTRiNGRmZGQyYzFmZDdiNTdiZjEiLCJhdHRhY2htZW50cyI6W10sInJlbGVhc2VfZGlnZXN0IjoiYzFmMzdiYzNjN2FiOGY2MjJkYzE4NjFlOTQ5ZmNjNjJjM2Q4NjAxMTEwNTBiNmMyMTYzYTY1NGFjMzVkNWQyYSIsImxldmVsIjoiQTEiLCJwcm9vZiI6eyJjaGFubmVsIjoidGVsZWdyYW0tYnV0dG9uIiwiYXBwcm92ZWRfYXQiOjE3OTQyNjg4MzAsImV2aWRlbmNlX3NoYTI1NiI6ImI5MzQ1OWI3N2VlOGQ2NmQ4NTdkMjdkNzZkNzMzZDQ0NzMzNzUzN2ZlMWY2ZmQ3NmIxNjgwZjI4YmZkZjY5NTkifX0.IeidH1XT7eBI2-WrcCNIO-fFscSBBGQmw575Ok1GS8QwZvcnpTzWmmXkmNNO7lKOhr1ZOlQkv1UrfyuFhSLEAQ~"
+        }
+      },
+      "compact": "eyJhbGciOiJFZERTQSIsImtpZCI6ImVkMjU1MTk6WU02cko3eloybDk4Q2lnZnhlUHB6MjcwaklrMG1TZnJNUm5qek1tMlRYYyIsInR5cCI6InBhc2VrYS1lbnZlbG9wZStqd3QifQ.eyJ2IjoxLCJpc3MiOiJlZDI1NTE5OllNNnJKN3paMmw5OENpZ2Z4ZVBwejI3MGpJazBtU2ZyTVJuanpNbTJUWGMiLCJhdWQiOiJlZDI1NTE5OlpUNl82X0VVRWtkNXN6Y1J5NkRKNkhMVVNVaExGWnNLcDN4ZlNzbFpDZDAiLCJpZCI6ImVfMDFKRDAwMDAwMDAwMDAwMDAwMDAwMDAwMDIiLCJ0eXBlIjoibWVzc2FnZSIsImlhdCI6MTc5NDI2ODgzMCwiZGF0YSI6eyJ0aHJlYWQiOiJ0aF8wMUpEMDAwMDAwMDAwMDAwMDAwMDAwMDAwMSIsImluX3JlcGx5X3RvIjoiZV8wMUpEMDAwMDAwMDAwMDAwMDAwMDAwMDAwMSIsImJvZHkiOiJCb2IgdGhpbmtzIHRoZSBwbGFuIGlzIGZpbmUuXG5TZWUgeW91IG9uIE1vbmRheS4iLCJhdHRhY2htZW50cyI6W10sIm1hbmRhdGUiOiJleUpoYkdjaU9pSkZaRVJUUVNJc0ltdHBaQ0k2SW1Wa01qVTFNVGs2V1UwMmNrbzNlbG95YkRrNFEybG5abmhsVUhCNk1qY3dha2xyTUcxVFpuSk5VbTVxZWsxdE1sUllZeUlzSW5SNWNDSTZJbkJoYzJWcllTMXRZVzVrWVhSbEszTmtMV3AzZENKOS5leUoySWpveExDSnJhVzVrSWpvaVkyeHZjMlZrSWl3aWFYTnpJam9pWldReU5UVXhPVHBaVFRaeVNqZDZXakpzT1RoRGFXZG1lR1ZRY0hveU56QnFTV3N3YlZObWNrMVNibXA2VFcweVZGaGpJaXdpZEdWdVlXNTBJam9pZEY4d01VcEVNREF3TURBd01EQXdNREF3TURBd01EQXdNREF3TVNJc0luUnZJam9pWldReU5UVXhPVHBhVkRaZk5sOUZWVVZyWkRWemVtTlNlVFpFU2paSVRGVlRWV2hNUmxwelMzQXplR1pUYzJ4YVEyUXdJaXdpYW5ScElqb2liV1JmTURGS1JEQXdNREF3TURBd01EQXdNREF3TURBd01EQXdNREVpTENKcFlYUWlPakUzT1RReU5qZzRNekFzSW1WNGNDSTZNVGM1TkRJMk9EZzVNQ3dpYm05dVkyVWlPaUpCUVVWRFFYZFJSa0puWTBsRFVXOU1SRUV3VDBSM0lpd2lkR2h5WldGa0lqb2lkR2hmTURGS1JEQXdNREF3TURBd01EQXdNREF3TURBd01EQXdNREVpTENKcGJsOXlaWEJzZVY5MGJ5STZJbVZmTURGS1JEQXdNREF3TURBd01EQXdNREF3TURBd01EQXdNREVpTENKamIyNTBaVzUwWDNOb1lUSTFOaUk2SWpKak9UWmlaR1ExTWpJMFkyUmlZakk0WW1Fd01EQmhZalEzWmpaaU5qWXhZbVV6T1Rnd05qWTBZVFJrWlRSaU5HUm1aR1F5WXpGbVpEZGlOVGRpWmpFaUxDSmhkSFJoWTJodFpXNTBjeUk2VzEwc0luSmxiR1ZoYzJWZlpHbG5aWE4wSWpvaVl6Rm1NemRpWXpOak4yRmlPR1kyTWpKa1l6RTROakZsT1RRNVptTmpOakpqTTJRNE5qQXhNVEV3TlRCaU5tTXlNVFl6WVRZMU5HRmpNelZrTldReVlTSXNJbXhsZG1Wc0lqb2lRVEVpTENKd2NtOXZaaUk2ZXlKamFHRnVibVZzSWpvaWRHVnNaV2R5WVcwdFluVjBkRzl1SWl3aVlYQndjbTkyWldSZllYUWlPakUzT1RReU5qZzRNekFzSW1WMmFXUmxibU5sWDNOb1lUSTFOaUk2SW1JNU16UTFPV0kzTjJWbE9HUTJObVE0TlRka01qZGtOelprTnpNelpEUTBOek16TnpVek4yWmxNV1kyWm1RM05tSXhOamd3WmpJNFltWmtaalk1TlRraWZYMC5JZWlkSDFYVDdlQkkyLVdyY0NOSU8tZkZzY1NCQkdRbXc1NzVPazFHUzhRd1p2Y25wVHpXbW1Ya21OTk83bEtPaHIxWk9sUWt2MVVyZnl1RmhTTEVBUX4ifX0.l-J0bL69wlzArsp7SqDvLA6EBhDCUZgy0jVicmWUdkvw8d8NmztFGXsQUqG-XwEWB6xy3LztjTDPfrHDtGXoBQ",
+      "envelope_sha256": "4f23a793225c1e9d8f6b40502f29af8a64c7db02ac376280ce098f4c2abc5b56"
+    },
+    "receipt": {
+      "payload": {
+        "v": 1,
+        "iss": "ed25519:ZT6_6_EUEkd5szcRy6DJ6HLUSUhLFZsKp3xfSslZCd0",
+        "aud": "ed25519:YM6rJ7zZ2l98CigfxePpz270jIk0mSfrMRnjzMm2TXc",
+        "id": "e_01JD0000000000000000000002",
+        "envelope_sha256": "4f23a793225c1e9d8f6b40502f29af8a64c7db02ac376280ce098f4c2abc5b56",
+        "received_at": 1794268831,
+        "status": "accepted"
+      },
+      "compact": "eyJhbGciOiJFZERTQSIsImtpZCI6ImVkMjU1MTk6WlQ2XzZfRVVFa2Q1c3pjUnk2REo2SExVU1VoTEZac0twM3hmU3NsWkNkMCIsInR5cCI6InBhc2VrYS1yZWNlaXB0K2p3dCJ9.eyJ2IjoxLCJpc3MiOiJlZDI1NTE5OlpUNl82X0VVRWtkNXN6Y1J5NkRKNkhMVVNVaExGWnNLcDN4ZlNzbFpDZDAiLCJhdWQiOiJlZDI1NTE5OllNNnJKN3paMmw5OENpZ2Z4ZVBwejI3MGpJazBtU2ZyTVJuanpNbTJUWGMiLCJpZCI6ImVfMDFKRDAwMDAwMDAwMDAwMDAwMDAwMDAwMDIiLCJlbnZlbG9wZV9zaGEyNTYiOiI0ZjIzYTc5MzIyNWMxZTlkOGY2YjQwNTAyZjI5YWY4YTY0YzdkYjAyYWMzNzYyODBjZTA5OGY0YzJhYmM1YjU2IiwicmVjZWl2ZWRfYXQiOjE3OTQyNjg4MzEsInN0YXR1cyI6ImFjY2VwdGVkIn0.HE2swAIUNYvEe1NM2-eA9Po8dxEt0j2gy8BodvjRoSupI2hku4IP8vOk7Vw3sA2I1R9Mu8sPBcAvlUyBgtbeCQ"
+    },
+    "pair_request": {
+      "payload": {
+        "v": 1,
+        "type": "pair.request",
+        "id": "p_01JD0000000000000000000001",
+        "iss": "ed25519:ZT6_6_EUEkd5szcRy6DJ6HLUSUhLFZsKp3xfSslZCd0",
+        "aud": "ed25519:YM6rJ7zZ2l98CigfxePpz270jIk0mSfrMRnjzMm2TXc",
+        "code": "ZGVmZ2hpamtsbW5vcHFycw",
+        "endpoint": "https://gate.example.org/bob",
+        "name_hint": "Bob",
+        "iat": 1794268800
+      },
+      "compact": "eyJhbGciOiJFZERTQSIsImtpZCI6ImVkMjU1MTk6WlQ2XzZfRVVFa2Q1c3pjUnk2REo2SExVU1VoTEZac0twM3hmU3NsWkNkMCIsInR5cCI6InBhc2VrYS1wYWlyK2p3dCJ9.eyJ2IjoxLCJ0eXBlIjoicGFpci5yZXF1ZXN0IiwiaWQiOiJwXzAxSkQwMDAwMDAwMDAwMDAwMDAwMDAwMDAxIiwiaXNzIjoiZWQyNTUxOTpaVDZfNl9FVUVrZDVzemNSeTZESjZITFVTVWhMRlpzS3AzeGZTc2xaQ2QwIiwiYXVkIjoiZWQyNTUxOTpZTTZySjd6WjJsOThDaWdmeGVQcHoyNzBqSWswbVNmck1Sbmp6TW0yVFhjIiwiY29kZSI6IlpHVm1aMmhwYW10c2JXNXZjSEZ5Y3ciLCJlbmRwb2ludCI6Imh0dHBzOi8vZ2F0ZS5leGFtcGxlLm9yZy9ib2IiLCJuYW1lX2hpbnQiOiJCb2IiLCJpYXQiOjE3OTQyNjg4MDB9.OjkWfkNu3puNC6jgpsfFwIuoVGeIsoIqkdEjVvpDQHCETPC-0sHqU3duDk8VAbaP0u2SJqkMjdq6oEiWkjgaDw"
+    }
+  }
+}

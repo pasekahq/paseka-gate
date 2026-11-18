@@ -1,0 +1,9 @@
+{
+  "v": 1,
+  "iss": "ed25519:ZT6_6_EUEkd5szcRy6DJ6HLUSUhLFZsKp3xfSslZCd0",
+  "aud": "ed25519:YM6rJ7zZ2l98CigfxePpz270jIk0mSfrMRnjzMm2TXc",
+  "id": "e_01JD0000000000000000000002",
+  "envelope_sha256": "4f23a793225c1e9d8f6b40502f29af8a64c7db02ac376280ce098f4c2abc5b56",
+  "received_at": 1794268831,
+  "status": "rejected"
+}

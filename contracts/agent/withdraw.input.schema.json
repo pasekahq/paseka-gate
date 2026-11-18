@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pasekahq.example.org/contracts/v1/agent/withdraw.input.schema.json",
+  "title": "withdraw input",
+  "type": "object",
+  "properties": {
+    "draft_id": {
+      "$ref": "../common.schema.json#/$defs/draft_id"
+    }
+  },
+  "required": [
+    "draft_id"
+  ],
+  "additionalProperties": false
+}

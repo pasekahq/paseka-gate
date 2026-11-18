@@ -1,0 +1,11 @@
+{
+  "to": "bob",
+  "body": "x",
+  "attachments": [
+    {
+      "name": "../etc/passwd",
+      "media_type": "text/plain",
+      "data": ""
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "entries": [
+    {
+      "seq": 1,
+      "at": 1794268800,
+      "kind": "message.received",
+      "message_id": "m_01JD0000000000000000000001",
+      "peer": "bob"
+    },
+    {
+      "seq": 2,
+      "at": 1794268805,
+      "kind": "draft.proposed",
+      "draft_id": "d_01JD0000000000000000000001"
+    }
+  ],
+  "next": null
+}

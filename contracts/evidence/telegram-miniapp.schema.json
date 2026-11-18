@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pasekahq.example.org/contracts/v1/evidence/telegram-miniapp.schema.json",
+  "title": "A2 evidence: Mini App review with Ed25519-verified initData",
+  "type": "object",
+  "required": [
+    "v",
+    "channel",
+    "level",
+    "tenant",
+    "request_id",
+    "nonce",
+    "challenge",
+    "decision",
+    "received_at",
+    "bot_id",
+    "approver_user_id",
+    "init_data",
+    "init_data_sha256",
+    "auth_date",
+    "telegram_env",
+    "edited"
+  ],
+  "properties": {
+    "v": {
+      "$ref": "../common.schema.json#/$defs/v"
+    },
+    "tenant": {
+      "$ref": "../common.schema.json#/$defs/tenant_id"
+    },
+    "request_id": {
+      "$ref": "../common.schema.json#/$defs/request_id"
+    },
+    "nonce": {
+      "$ref": "../common.schema.json#/$defs/nonce"
+    },
+    "challenge": {
+      "$ref": "../common.schema.json#/$defs/sha256"
+    },
+    "decision": {
+      "$ref": "../common.schema.json#/$defs/decision"
+    },
+    "received_at": {
+      "$ref": "../common.schema.json#/$defs/unix_time"
+    },
+    "channel": {
+      "const": "telegram-miniapp"
+    },
+    "level": {
+      "const": "A2"
+    },
+    "bot_id": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "approver_user_id": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "init_data": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 8192
+    },
+    "init_data_sha256": {
+      "$ref": "../common.schema.json#/$defs/sha256"
+    },
+    "auth_date": {
+      "$ref": "../common.schema.json#/$defs/unix_time"
+    },
+    "telegram_env": {
+      "enum": [
+        "production",
+        "test"
+      ]
+    },
+    "edited": {
+      "type": "boolean"
+    },
+    "edited_content_sha256": {
+      "$ref": "../common.schema.json#/$defs/sha256"
+    }
+  },
+  "if": {
+    "properties": {
+      "edited": {
+        "const": true
+      }
+    }
+  },
+  "then": {
+    "required": [
+      "edited_content_sha256"
+    ]
+  }
+}

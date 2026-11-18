@@ -1,0 +1,45 @@
+{
+  "peers": [
+    {
+      "peer": "bob",
+      "name": "Bob",
+      "trust": "T2",
+      "shelves": [
+        {
+          "shelf_id": "sh_01JD0000000000000000000001",
+          "name": "Projects",
+          "docs": [
+            {
+              "doc": "/home/alice/a.md",
+              "title": "Budget",
+              "media_type": "text/markdown",
+              "sections": [
+                "budget-2027"
+              ]
+            }
+          ]
+        }
+      ],
+      "templates": [
+        {
+          "id": "availability",
+          "description": "Free slots on a day",
+          "fields": {
+            "day": {
+              "type": "enum",
+              "values": [
+                "monday",
+                "tuesday"
+              ]
+            },
+            "slots": {
+              "type": "int",
+              "min": 0,
+              "max": 8
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

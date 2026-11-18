@@ -1,0 +1,8 @@
+{
+  "to": "bob",
+  "body": "hi",
+  "template": {
+    "id": "availability",
+    "fields": {}
+  }
+}

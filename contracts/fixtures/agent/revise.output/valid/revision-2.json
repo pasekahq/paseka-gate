@@ -1,0 +1,16 @@
+{
+  "draft_id": "d_01JD0000000000000000000001",
+  "revision": 2,
+  "kind": "free_text",
+  "to": "bob",
+  "thread": "th_01JD0000000000000000000001",
+  "in_reply_to": "m_01JD0000000000000000000001",
+  "state": "awaiting_consent",
+  "body": "Bob thinks the plan is fine.\nSee you on Monday.",
+  "attachments": [],
+  "content_sha256": "2c96bdd5224cdbb28ba000ab47f6b661be3980664a4de4b4dfdd2c1fd7b57bf1",
+  "edited_by_owner": false,
+  "created_at": 1794268800,
+  "updated_at": 1794268800,
+  "expires_at": 1794272400
+}

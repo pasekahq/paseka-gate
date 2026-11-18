@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pasekahq.example.org/contracts/v1/agent/peers.output.schema.json",
+  "title": "peers output",
+  "type": "object",
+  "required": [
+    "peers"
+  ],
+  "properties": {
+    "peers": {
+      "type": "array",
+      "items": {
+        "$ref": "views.schema.json#/$defs/PeerView"
+      }
+    }
+  }
+}

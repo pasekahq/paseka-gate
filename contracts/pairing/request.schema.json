@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pasekahq.example.org/contracts/v1/pairing/request.schema.json",
+  "title": "pair.request payload (JWS typ paseka-pair+jwt, signed by the invitee key)",
+  "type": "object",
+  "required": [
+    "v",
+    "type",
+    "id",
+    "iss",
+    "aud",
+    "code",
+    "endpoint",
+    "name_hint",
+    "iat"
+  ],
+  "properties": {
+    "v": {
+      "$ref": "../common.schema.json#/$defs/v"
+    },
+    "type": {
+      "const": "pair.request"
+    },
+    "id": {
+      "$ref": "../common.schema.json#/$defs/pairing_id"
+    },
+    "iss": {
+      "$ref": "../common.schema.json#/$defs/key_id"
+    },
+    "aud": {
+      "$ref": "../common.schema.json#/$defs/key_id"
+    },
+    "code": {
+      "$ref": "../common.schema.json#/$defs/nonce"
+    },
+    "endpoint": {
+      "$ref": "../common.schema.json#/$defs/https_url"
+    },
+    "name_hint": {
+      "type": "string",
+      "maxLength": 64,
+      "description": "Claimed by the invitee; shown as unverified."
+    },
+    "iat": {
+      "$ref": "../common.schema.json#/$defs/unix_time"
+    }
+  }
+}

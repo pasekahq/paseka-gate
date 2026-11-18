@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pasekahq.example.org/contracts/v1/agent/queue.input.schema.json",
+  "title": "queue input",
+  "type": "object",
+  "properties": {
+    "states": {
+      "type": "array",
+      "items": {
+        "$ref": "../common.schema.json#/$defs/draft_state"
+      },
+      "uniqueItems": true
+    },
+    "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100
+    },
+    "since": {
+      "$ref": "../common.schema.json#/$defs/cursor"
+    }
+  },
+  "required": [],
+  "additionalProperties": false
+}

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pasekahq.example.org/contracts/v1/agent/journal.output.schema.json",
+  "title": "journal output",
+  "type": "object",
+  "required": [
+    "entries",
+    "next"
+  ],
+  "properties": {
+    "entries": {
+      "type": "array",
+      "items": {
+        "$ref": "views.schema.json#/$defs/JournalEntry"
+      }
+    },
+    "next": {
+      "oneOf": [
+        {
+          "$ref": "../common.schema.json#/$defs/cursor"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pasekahq.example.org/contracts/v1/agent/revise.input.schema.json",
+  "title": "revise input",
+  "type": "object",
+  "properties": {
+    "draft_id": {
+      "$ref": "../common.schema.json#/$defs/draft_id"
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "body": {
+      "$ref": "../common.schema.json#/$defs/body"
+    },
+    "template": {
+      "type": "object",
+      "required": [
+        "id",
+        "fields"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "../common.schema.json#/$defs/template_id"
+        },
+        "fields": {
+          "type": "object",
+          "maxProperties": 32,
+          "additionalProperties": {
+            "type": [
+              "string",
+              "integer"
+            ]
+          }
+        }
+      }
+    },
+    "attachments": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "media_type",
+          "data"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "$ref": "../common.schema.json#/$defs/attachment_name"
+          },
+          "media_type": {
+            "$ref": "../common.schema.json#/$defs/media_type"
+          },
+          "data": {
+            "$ref": "../common.schema.json#/$defs/b64u",
+            "maxLength": 2796203
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "draft_id",
+    "revision"
+  ],
+  "additionalProperties": false,
+  "oneOf": [
+    {
+      "required": [
+        "body"
+      ]
+    },
+    {
+      "required": [
+        "template"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+{
+  "since": "c1",
+  "limit": 50,
+  "peer": "bob"
+}

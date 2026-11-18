@@ -1,0 +1,440 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pasekahq.example.org/contracts/v1/agent/views.schema.json",
+  "title": "Agent-visible views",
+  "$defs": {
+    "DraftView": {
+      "type": "object",
+      "required": [
+        "draft_id",
+        "revision",
+        "kind",
+        "to",
+        "thread",
+        "in_reply_to",
+        "state",
+        "body",
+        "attachments",
+        "content_sha256",
+        "edited_by_owner",
+        "created_at",
+        "updated_at"
+      ],
+      "properties": {
+        "draft_id": {
+          "$ref": "../common.schema.json#/$defs/draft_id"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "kind": {
+          "enum": [
+            "free_text",
+            "template",
+            "share"
+          ]
+        },
+        "to": {
+          "$ref": "../common.schema.json#/$defs/peer_handle"
+        },
+        "thread": {
+          "$ref": "../common.schema.json#/$defs/thread_id"
+        },
+        "in_reply_to": {
+          "oneOf": [
+            {
+              "$ref": "../common.schema.json#/$defs/message_id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "state": {
+          "$ref": "../common.schema.json#/$defs/draft_state"
+        },
+        "reason": {
+          "$ref": "../common.schema.json#/$defs/reason"
+        },
+        "body": {
+          "$ref": "../common.schema.json#/$defs/body"
+        },
+        "attachments": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "$ref": "../common.schema.json#/$defs/attachment_meta"
+          }
+        },
+        "content_sha256": {
+          "$ref": "../common.schema.json#/$defs/sha256"
+        },
+        "edited_by_owner": {
+          "type": "boolean"
+        },
+        "created_at": {
+          "$ref": "../common.schema.json#/$defs/unix_time"
+        },
+        "updated_at": {
+          "$ref": "../common.schema.json#/$defs/unix_time"
+        },
+        "expires_at": {
+          "$ref": "../common.schema.json#/$defs/unix_time"
+        },
+        "delivery": {
+          "type": "object",
+          "required": [
+            "state",
+            "updated_at"
+          ],
+          "properties": {
+            "state": {
+              "$ref": "../common.schema.json#/$defs/delivery_state"
+            },
+            "updated_at": {
+              "$ref": "../common.schema.json#/$defs/unix_time"
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "enum": [
+                  "denied",
+                  "expired",
+                  "withdrawn",
+                  "blocked"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "reason"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "released"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "delivery"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "awaiting_consent"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "expires_at"
+            ]
+          }
+        }
+      ]
+    },
+    "InboxItem": {
+      "type": "object",
+      "required": [
+        "message_id",
+        "origin",
+        "from",
+        "thread",
+        "received_at",
+        "preview",
+        "attachments_count",
+        "read",
+        "sender_level"
+      ],
+      "properties": {
+        "message_id": {
+          "$ref": "../common.schema.json#/$defs/message_id"
+        },
+        "origin": {
+          "const": "peer"
+        },
+        "from": {
+          "$ref": "../common.schema.json#/$defs/peer_handle"
+        },
+        "thread": {
+          "$ref": "../common.schema.json#/$defs/thread_id"
+        },
+        "in_reply_to_draft": {
+          "$ref": "../common.schema.json#/$defs/draft_id"
+        },
+        "received_at": {
+          "$ref": "../common.schema.json#/$defs/unix_time"
+        },
+        "preview": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Untrusted peer text."
+        },
+        "attachments_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 8
+        },
+        "read": {
+          "type": "boolean"
+        },
+        "sender_level": {
+          "$ref": "../common.schema.json#/$defs/level"
+        }
+      }
+    },
+    "Message": {
+      "type": "object",
+      "required": [
+        "message_id",
+        "origin",
+        "from",
+        "thread",
+        "received_at",
+        "body",
+        "attachments",
+        "sender_level",
+        "sender_channel"
+      ],
+      "properties": {
+        "message_id": {
+          "$ref": "../common.schema.json#/$defs/message_id"
+        },
+        "origin": {
+          "const": "peer"
+        },
+        "from": {
+          "$ref": "../common.schema.json#/$defs/peer_handle"
+        },
+        "thread": {
+          "$ref": "../common.schema.json#/$defs/thread_id"
+        },
+        "in_reply_to_draft": {
+          "$ref": "../common.schema.json#/$defs/draft_id"
+        },
+        "received_at": {
+          "$ref": "../common.schema.json#/$defs/unix_time"
+        },
+        "body": {
+          "$ref": "../common.schema.json#/$defs/body",
+          "description": "Untrusted peer text."
+        },
+        "attachments": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "allOf": [
+              {
+                "$ref": "../common.schema.json#/$defs/attachment_meta"
+              }
+            ],
+            "properties": {
+              "data": {
+                "$ref": "../common.schema.json#/$defs/b64u",
+                "description": "Attachment bytes, b64u."
+              }
+            },
+            "required": [
+              "data"
+            ]
+          }
+        },
+        "sender_level": {
+          "$ref": "../common.schema.json#/$defs/level"
+        },
+        "sender_channel": {
+          "$ref": "../common.schema.json#/$defs/channel"
+        }
+      }
+    },
+    "PeerView": {
+      "type": "object",
+      "required": [
+        "peer",
+        "name",
+        "trust",
+        "shelves",
+        "templates"
+      ],
+      "properties": {
+        "peer": {
+          "$ref": "../common.schema.json#/$defs/peer_handle"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "trust": {
+          "$ref": "../common.schema.json#/$defs/trust"
+        },
+        "conversation_until": {
+          "$ref": "../common.schema.json#/$defs/unix_time"
+        },
+        "shelves": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "shelf_id",
+              "name",
+              "docs"
+            ],
+            "properties": {
+              "shelf_id": {
+                "$ref": "../common.schema.json#/$defs/shelf_id"
+              },
+              "name": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "docs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "doc",
+                    "title",
+                    "media_type",
+                    "sections"
+                  ],
+                  "properties": {
+                    "doc": {
+                      "$ref": "../common.schema.json#/$defs/doc_id"
+                    },
+                    "title": {
+                      "type": "string",
+                      "maxLength": 256
+                    },
+                    "media_type": {
+                      "$ref": "../common.schema.json#/$defs/media_type"
+                    },
+                    "sections": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "pattern": "^[a-z0-9][a-z0-9-]{0,127}$"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "templates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "description",
+              "fields"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "../common.schema.json#/$defs/template_id"
+              },
+              "description": {
+                "type": "string",
+                "maxLength": 500
+              },
+              "fields": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "required": [
+                    "type"
+                  ],
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "enum",
+                        "int",
+                        "date",
+                        "short_text"
+                      ]
+                    },
+                    "values": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "min": {
+                      "type": "integer"
+                    },
+                    "max": {
+                      "type": "integer"
+                    },
+                    "max_len": {
+                      "type": "integer",
+                      "minimum": 1
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "JournalEntry": {
+      "type": "object",
+      "required": [
+        "seq",
+        "at",
+        "kind"
+      ],
+      "properties": {
+        "seq": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "at": {
+          "$ref": "../common.schema.json#/$defs/unix_time"
+        },
+        "kind": {
+          "enum": [
+            "draft.proposed",
+            "draft.revised",
+            "draft.withdrawn",
+            "draft.released",
+            "draft.denied",
+            "draft.expired",
+            "draft.blocked",
+            "delivery.delivered",
+            "delivery.failed",
+            "message.received",
+            "peer.added",
+            "peer.removed",
+            "trust.changed"
+          ]
+        },
+        "draft_id": {
+          "$ref": "../common.schema.json#/$defs/draft_id"
+        },
+        "message_id": {
+          "$ref": "../common.schema.json#/$defs/message_id"
+        },
+        "peer": {
+          "$ref": "../common.schema.json#/$defs/peer_handle"
+        }
+      }
+    }
+  }
+}

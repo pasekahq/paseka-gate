@@ -1,0 +1,16 @@
+{
+  "v": 1,
+  "channel": "telegram-button",
+  "level": "A1",
+  "tenant": "t_01JD0000000000000000000001",
+  "request_id": "r_01JD0000000000000000000001",
+  "nonce": "AAECAwQFBgcICQoLDA0ODw",
+  "challenge": "8fc152ef0e1de0d523e309757f77de424bdffb950671a65f65ebddf1a3f929d6",
+  "decision": "approve",
+  "received_at": 1794268830,
+  "bot_id": 1000001,
+  "chat_id": 2000001,
+  "message_id": 42,
+  "callback_query_id": "4200000000000000001",
+  "update_id": 900001
+}

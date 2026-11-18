@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "channel": "passkey",
+  "level": "A3",
+  "tenant": "t_01JD0000000000000000000001",
+  "request_id": "r_01JD0000000000000000000001",
+  "nonce": "AAECAwQFBgcICQoLDA0ODw",
+  "challenge": "5656565656565656565656565656565656565656565656565656565656565656",
+  "decision": "approve",
+  "received_at": 1794268800,
+  "credential_id": "Y3JlZA",
+  "authenticator_data": "YXV0aA",
+  "client_data_json": "Y2Rq",
+  "signature": "c2ln+/=="
+}

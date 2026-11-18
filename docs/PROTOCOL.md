@@ -631,6 +631,5 @@ Invariants:
 
 ## 13. Versioning
 
-Contract evolution rules are in `contracts/README.md`. Version 1 receivers ignore unknown fields
-on the wire, map unknown informational enum values to `unknown`, and fail closed on unknown values
-of fields that carry authority (`kind`, `level`, `proof.channel`, `typ`, `alg`, event `type`).
+Contract evolution and reader tolerance (unknown fields ignored, informational enums with an
+`Unknown` fallback, authority-bearing values fail closed) are defined in `contracts/README.md`.

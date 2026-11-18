@@ -1,0 +1,10 @@
+{
+  "to": "bob",
+  "template": {
+    "id": "availability",
+    "fields": {
+      "day": "monday",
+      "slots": 2
+    }
+  }
+}

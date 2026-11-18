@@ -1,0 +1,206 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pasekahq.example.org/contracts/v1/common.schema.json",
+  "title": "Shared definitions",
+  "$defs": {
+    "v": {
+      "const": 1,
+      "description": "Contract major version."
+    },
+    "tenant_id": {
+      "type": "string",
+      "pattern": "^t_[0-9A-HJKMNP-TV-Z]{26}$",
+      "description": "Gate-local opaque tenant id."
+    },
+    "draft_id": {
+      "type": "string",
+      "pattern": "^d_[0-9A-HJKMNP-TV-Z]{26}$",
+      "description": "Gate-local draft id."
+    },
+    "request_id": {
+      "type": "string",
+      "pattern": "^r_[0-9A-HJKMNP-TV-Z]{26}$",
+      "description": "Gate-local approval request id."
+    },
+    "message_id": {
+      "type": "string",
+      "pattern": "^m_[0-9A-HJKMNP-TV-Z]{26}$",
+      "description": "Gate-local inbox item id."
+    },
+    "event_id": {
+      "type": "string",
+      "pattern": "^e_[0-9A-HJKMNP-TV-Z]{26}$",
+      "description": "Global event id chosen by the sending gate."
+    },
+    "thread_id": {
+      "type": "string",
+      "pattern": "^th_[0-9A-HJKMNP-TV-Z]{26}$",
+      "description": "Global thread id chosen by the gate that opened the thread."
+    },
+    "mandate_id": {
+      "type": "string",
+      "pattern": "^md_[0-9A-HJKMNP-TV-Z]{26}$",
+      "description": "Global mandate id (jti)."
+    },
+    "pairing_id": {
+      "type": "string",
+      "pattern": "^p_[0-9A-HJKMNP-TV-Z]{26}$",
+      "description": "Global pairing message id."
+    },
+    "shelf_id": {
+      "type": "string",
+      "pattern": "^sh_[0-9A-HJKMNP-TV-Z]{26}$",
+      "description": "Gate-local shelf id."
+    },
+    "doc_id": {
+      "type": "string",
+      "pattern": "^doc_[0-9A-HJKMNP-TV-Z]{26}$",
+      "description": "Gate-local opaque document id; never a path."
+    },
+    "peer_handle": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+    },
+    "template_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+    },
+    "key_id": {
+      "type": "string",
+      "pattern": "^ed25519:[A-Za-z0-9_-]{43}$",
+      "description": "ed25519: + b64u of the 32-byte public key."
+    },
+    "nonce": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{22}$",
+      "description": "b64u of 16 random bytes."
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "b64u": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]*$"
+    },
+    "unix_time": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "cursor": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "https_url": {
+      "type": "string",
+      "pattern": "^https://[^\\s]+$",
+      "maxLength": 2048
+    },
+    "level": {
+      "enum": [
+        "A0",
+        "A1",
+        "A2",
+        "A2+",
+        "A3"
+      ]
+    },
+    "channel": {
+      "enum": [
+        "open-mandate",
+        "telegram-button",
+        "telegram-miniapp",
+        "telegram-miniapp-biometric",
+        "passkey"
+      ]
+    },
+    "draft_state": {
+      "enum": [
+        "awaiting_consent",
+        "approved",
+        "released",
+        "denied",
+        "expired",
+        "withdrawn",
+        "blocked"
+      ]
+    },
+    "reason": {
+      "enum": [
+        "owner",
+        "timeout",
+        "agent",
+        "policy",
+        "internal"
+      ]
+    },
+    "delivery_state": {
+      "enum": [
+        "pending",
+        "delivered",
+        "failed"
+      ]
+    },
+    "trust": {
+      "enum": [
+        "T0",
+        "T1",
+        "T2",
+        "T3"
+      ]
+    },
+    "decision": {
+      "enum": [
+        "approve",
+        "deny"
+      ]
+    },
+    "body": {
+      "type": "string",
+      "maxLength": 65536,
+      "description": "UTF-8, at most 65536 bytes, no U+0000. Byte limit enforced by the gate."
+    },
+    "attachment_name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[^/\\\\\\u0000-\\u001f\\u007f]+$"
+    },
+    "media_type": {
+      "type": "string",
+      "maxLength": 255,
+      "pattern": "^[a-z0-9][a-z0-9!#$&^_.+-]*/[a-z0-9][a-z0-9!#$&^_.+-]*$"
+    },
+    "attachment_meta": {
+      "type": "object",
+      "required": [
+        "name",
+        "media_type",
+        "size",
+        "sha256"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/attachment_name"
+        },
+        "media_type": {
+          "$ref": "#/$defs/media_type"
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2097152
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "sd_jwt": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+~$",
+      "description": "Compact JWS followed by ~ (SD-JWT with zero disclosures)."
+    }
+  }
+}
