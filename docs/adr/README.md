@@ -30,3 +30,4 @@ points to the successor.
 | [0009](0009-clean-slate.md) | Clean slate: no compatibility with the old Python gate |
 | [0010](0010-tolerant-readers.md) | Contracts only grow; readers are tolerant |
 | [0011](0011-peer-turn-launch-profile.md) | Peer turns run under a separate agent launch profile |
+| [0012](0012-mandate-encoding-gate-signed-sd-jwt.md) | Mandates are gate-signed SD-JWTs with zero disclosures; evidence stays behind a hash |

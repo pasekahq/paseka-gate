@@ -234,6 +234,16 @@ envelope happen in one transaction; delivery is at least once with receiver dedu
 - CA-46 Kill the gate between decision and delivery, restart. Result: exactly one envelope
   delivered, one inbox item at the peer.
 
+Old attack ideas (ADR 0009). The consent-forgery suite CF-1 to CF-15 of the old gate maps to:
+CF-1, CF-6, CF-9 and CF-13 (agent-written approvals, proof fields, evidence) to CA-1, CA-2,
+CA-5 and CA-34; CF-2 (browser decision identity and binding) to CA-9, CA-14 and CA-16; CF-3
+(edited, stale, expired, replayed approvals) to CA-6, CA-8, CA-10, CA-11 and CA-13; CF-4
+(forged escalation approval) to CA-21 and CA-47; CF-5 (guest and peer text approving or
+changing policy) to CA-5, CA-23 and CA-24; CF-7 (cancellation) to CA-7; CF-8, CF-12 and CF-15
+(chat text relayed or read as approval) to CA-4, since only a callback with the request nonce
+decides; CF-10 and CF-14 (commit lost after claim) to CA-46; CF-11 (preview faithfulness) to
+CA-22 and CA-41.
+
 ## 7. Out of scope
 
 - Out-of-band exfiltration by the agent's own tools (web fetch, mail, shell with network,

@@ -16,4 +16,5 @@ Compatibility would carry HMAC trust and a second wire format into a security co
 
 ## Consequences
 - No migration tool. Owners of the old gate run both until their peers are re-invited.
-- The conformance suite names which old attack idea each new attack covers, where it applies.
+- `docs/THREAT-MODEL.md` §6 maps each old attack idea CF-n to the conformance attacks that
+  cover it.

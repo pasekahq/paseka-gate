@@ -10,7 +10,9 @@ release path.
 
 ## Decision
 - Checks only raise friction; they never replace the human. Free text to a peer is at least A1.
-  A0 is possible only for structured or template output or under an owner-signed open mandate.
+  A0 is possible only under a matching owner-signed open mandate (T1 templates, T2 shelf shares,
+  a conversation window) and only when no check raised a flag; without one, templates and
+  shares need A1 too.
 - The owner's dictionary lives in the gate and the agent cannot edit it: built-in detectors
   (gitleaks-like secret rules, card numbers, IBAN, phones, addresses, IDs), personal lists built
   in the first-run ceremony, per-peer policy.
@@ -24,7 +26,8 @@ release path.
 
 ## Consequences
 - The monotonic property is a unit-tested invariant of `paseka-core`.
-- Until A2+ and A3 exist, a rule that asks for them holds the draft at A2 with a warning or
-  blocks it, per owner policy; it never falls back to a lower level silently.
+- Until A2+ and A3 exist, a draft that needs them is blocked with reason `policy` and the owner
+  is notified. The owner may lower that rule's floor to A2 through consent; the gate never falls
+  back to a lower level silently.
 - Source provenance is "agent says" for plain agents, verified for data read through the gate's
   MCP proxy, and full taint for ulei.
