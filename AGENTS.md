@@ -8,10 +8,10 @@ Protocol: `docs/PROTOCOL.md`. Threat model: `docs/THREAT-MODEL.md`. Plan: `docs/
 
 | Path | What |
 |---|---|
-| `crates/paseka-proto` | Wire and data types: mandates, evidence, envelopes, draft states, tool I/O. Tolerant readers. |
-| `crates/paseka-core` | Pure logic, no I/O, no clock (the caller passes `now`): canonical hash, mandate verification, risk evaluation, trust decisions, shelf checks, tenant isolation. |
+| `crates/paseka-proto` | Types of every shape in `contracts/`: ids, mandates, evidence, envelopes, pairing, draft states, agent tool I/O. `tests/contracts.rs` checks them against the fixtures. |
+| `crates/paseka-core` | Pure logic, no I/O, no clock (the caller passes `now`): digests, draft states and approval checks, mandate issuance and verification, open mandates, risk evaluation, templates, shelves, envelope verification, tenant isolation. |
 | `crates/paseka` | The multicall binary: `serve`, `mcp`, `init`, `conformance`, `version`. |
-| `crates/paseka-conformance` | Conformance attacks, one named test per attack. |
+| `crates/paseka-conformance` | Conformance attacks CA-n of `docs/THREAT-MODEL.md`, one test per attack. |
 | `contracts/` | JSON Schemas and fixtures. Only grow. |
 | `skills/` | Install and connect skills for the owner's agent. |
 | `ci/` | `broad_check.py`, `budgets.sh`, `repro-build.sh`. |
@@ -46,8 +46,9 @@ Optional locally, always in CI: `cargo deny check`, `gitleaks git .`, the musl r
    `paseka`; an exception needs a `SAFETY:` comment, a test and an ADR.
 6. Budgets in `ci/budgets.sh` (binary size, idle RSS, idle wakeups, dependency count) are part of
    the contract. Do not raise a limit to make CI green; fix the cause or write an ADR.
-7. Tolerant readers: unknown fields are ignored, enums have an `Unknown` variant, and `Unknown`
-   in a security field is a rejection (ADR 0010). Contracts only grow.
+7. Tolerant readers: unknown fields are ignored and informational enums have an `Unknown`
+   variant; authority-bearing enums have none, so an unknown value fails to parse (ADR 0010).
+   Agent tool inputs reject unknown fields. Contracts only grow.
 8. No secrets, real host names, person names, e-mails, IPs or home paths in code, docs,
    fixtures or tests. Use alice, bob, carol and example.org.
 9. No telemetry and no update checks. Outbound connections: peer gates, the Telegram Bot API,
@@ -69,8 +70,8 @@ Write `docs/adr/NNNN-title.md` (template in `docs/adr/README.md`) before or with
 - Errors are values: no `unwrap()` outside tests; `expect()` only for real invariants. A missing
   required value is an error, never an empty default.
 - Times are Unix seconds (`u64`).
-- Core logic gets table tests in `paseka-core`; every security property gets a named conformance
-  attack in `paseka-conformance`.
+- Core logic gets table tests in `paseka-core`; every security property SP-n gets at least one
+  conformance attack CA-n in `paseka-conformance`, numbered as in `docs/THREAT-MODEL.md`.
 - A contract change updates the schema, a valid and an invalid fixture, `paseka-proto` and
   `docs/PROTOCOL.md` in one commit.
 - Commits: small, one logical change, imperative mood. No `Co-Authored-By` and no
