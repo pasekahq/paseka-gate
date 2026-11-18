@@ -1,0 +1,44 @@
+# cargo-deny: licenses, advisories, bans and sources.
+[graph]
+targets = ["x86_64-unknown-linux-gnu", "x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl"]
+all-features = true
+
+[advisories]
+version = 2
+yanked = "deny"
+
+[licenses]
+version = 2
+confidence-threshold = 0.9
+allow = [
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-3-Clause",
+  "ISC",
+  "MIT",
+  "Unicode-3.0",
+  "Unlicense",
+]
+
+[licenses.private]
+ignore = true
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+# The gate is synchronous and small; heavy async stacks, OpenSSL, chrono and Python bindings stay out.
+deny = [
+  { crate = "tokio" },
+  { crate = "hyper" },
+  { crate = "axum" },
+  { crate = "reqwest" },
+  { crate = "openssl" },
+  { crate = "openssl-sys" },
+  { crate = "chrono" },
+  { crate = "pyo3" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
