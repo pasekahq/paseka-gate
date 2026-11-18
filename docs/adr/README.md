@@ -1,0 +1,32 @@
+# Architecture decision records
+
+One file per decision: `NNNN-short-title.md`, numbered in order, never renumbered. Template:
+
+```
+# NNNN. Title
+
+Status: Proposed | Accepted | Superseded by NNNN
+Date: YYYY-MM-DD
+
+## Context
+## Decision
+## Consequences
+```
+
+An ADR is required for: a new crate, a new dependency, a contract change that is not purely
+additive, and any deviation from `docs/concept/CONCEPT.md`. A superseded ADR stays; its Status line
+points to the successor.
+
+| ADR | Decision |
+|---|---|
+| [0001](0001-sync-rust-stack.md) | Synchronous Rust stack, one static binary |
+| [0002](0002-agent-untrusted-no-approve-tool.md) | Every agent is untrusted; the agent interface has no approve tool |
+| [0003](0003-ap2-style-mandates.md) | Consent is an AP2-style mandate over a content hash |
+| [0004](0004-approval-levels-telegram-evidence.md) | Approval levels A0 to A3; Telegram evidence verified by Ed25519 |
+| [0005](0005-monotonic-risk-evaluation.md) | Risk evaluation only raises the approval level |
+| [0006](0006-trust-levels-and-shelves.md) | Per-peer trust levels T0 to T3; shelves share by pointer |
+| [0007](0007-multi-tenant-from-day-one.md) | Multi-tenant from day one |
+| [0008](0008-self-host-and-verification-chain.md) | Self-host is the main path; a five-step verification chain |
+| [0009](0009-clean-slate.md) | Clean slate: no compatibility with the old Python gate |
+| [0010](0010-tolerant-readers.md) | Contracts only grow; readers are tolerant |
+| [0011](0011-peer-turn-launch-profile.md) | Peer turns run under a separate agent launch profile |

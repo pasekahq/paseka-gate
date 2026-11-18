@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Read",
+      "Grep",
+      "Glob",
+      "mcp__paseka",
+      "Edit(~/paseka-quarantine/**)"
+    ],
+    "deny": [
+      "WebFetch",
+      "WebSearch",
+      "Bash",
+      "Task",
+      "Agent",
+      "NotebookEdit"
+    ]
+  }
+}
