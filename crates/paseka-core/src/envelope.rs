@@ -1,190 +1,231 @@
-//! Gate-to-gate envelope verification: signature by a paired gate, addressing, freshness and
-//! replay.
+//! Gate-to-gate envelopes: sealing by the sender and receiver verification (PROTOCOL §10.3).
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
-use ed25519_dalek::VerifyingKey;
-use paseka_proto::envelope::{ENVELOPE_V, Envelope};
-use paseka_proto::jws::TYP_ENVELOPE;
-use paseka_proto::{GateId, Nonce, UnixSecs};
+use ed25519_dalek::{SigningKey, VerifyingKey};
+use paseka_proto::envelope::{Envelope, Event, ReceiptStatus, WireErrorCode};
+use paseka_proto::jws::{Compact, JwsError, MAX_TOKEN_BYTES, Typ};
+use paseka_proto::{EventId, KeyId, Sha256, TenantId, UnixSecs};
+use serde::Serialize;
 
-use crate::token::{self, TokenError};
+use crate::hash::sha256;
+use crate::mandate::{JtiBook, MandateInvalid, verify_received};
+use crate::tenant::TenantMap;
+use crate::token;
 
-/// Accepted clock difference between gates, either way.
-pub const FRESHNESS_SECS: u64 = 300;
+/// Allowed clock skew into the future.
+pub const SKEW_SECS: u64 = 300;
+/// Oldest accepted `iat`.
+pub const MAX_AGE_SECS: u64 = 604_800;
 
-/// Why an envelope is refused.
+/// Signs an envelope payload with the sender tenant key. Retries send the identical bytes.
+///
+/// # Panics
+/// Never: envelope payloads always serialise.
+pub fn seal<D: Serialize>(key: &SigningKey, env: &Envelope<D>) -> String {
+    let payload = serde_json::to_vec(env).expect("envelope serialises");
+    token::sign(key, Typ::Envelope, &payload)
+}
+
+/// Pairing state of a peer as the receiver knows it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EnvelopeError {
-    /// Token-level failure; an unpaired sender reads as [`TokenError::UnknownKey`].
-    Token(TokenError),
-    /// Payload is not a valid envelope.
-    Payload,
-    /// Unsupported version.
-    Version,
-    /// `from` differs from the signing key.
-    SenderMismatch,
-    /// Addressed to another gate.
-    NotForUs,
-    /// `sent_at` outside the freshness window.
-    Stale,
-    /// `msg_id` already seen from this sender.
-    Replay,
+pub enum PeerState {
+    /// The local owner has not confirmed the pairing yet.
+    PendingOwner,
+    /// Active.
+    Active,
 }
 
-/// Paired gates' keys and the replay window.
+/// An accepted envelope.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Accepted {
+    /// Addressed tenant.
+    pub tenant: TenantId,
+    /// The event; `None` for a duplicate already stored.
+    pub event: Option<Event>,
+    /// Receipt status.
+    pub status: ReceiptStatus,
+    /// SHA-256 of the compact JWS bytes.
+    pub envelope_sha256: Sha256,
+}
+
+/// Receiver state: tenants by key, paired peers, seen event ids and mandate ids.
 #[derive(Debug, Clone, Default)]
-pub struct Inbound {
-    peers: BTreeMap<String, VerifyingKey>,
-    seen: BTreeSet<(UnixSecs, GateId, Nonce)>,
-    seen_ids: BTreeSet<(GateId, Nonce)>,
+pub struct Receiver {
+    tenants: BTreeMap<KeyId, TenantId>,
+    peers: TenantMap<KeyId, (VerifyingKey, PeerState)>,
+    seen: TenantMap<(KeyId, EventId), (Sha256, UnixSecs)>,
+    jtis: JtiBook,
 }
 
-impl Inbound {
-    /// Pairs a gate by its key.
-    pub fn pair(&mut self, key: VerifyingKey) {
-        self.peers.insert(token::kid_of(&key), key);
+#[derive(serde::Deserialize)]
+struct RawHead {
+    v: u32,
+    #[serde(rename = "type")]
+    kind: String,
+}
+
+fn malformed(e: JwsError) -> WireErrorCode {
+    match e {
+        JwsError::TooLarge => WireErrorCode::TooLarge,
+        _ => WireErrorCode::Malformed,
+    }
+}
+
+impl Receiver {
+    /// Registers a local tenant under its key id.
+    pub fn add_tenant(&mut self, key: KeyId, tenant: TenantId) {
+        self.tenants.insert(key, tenant);
     }
 
-    /// Verifies an envelope addressed to `me` and records its id.
+    /// Records a peer of `tenant` in `state`.
+    pub fn set_peer(&mut self, tenant: &TenantId, key: VerifyingKey, state: PeerState) {
+        self.peers.insert(tenant, token::key_id(&key), (key, state));
+    }
+
+    /// Verifies and accepts one envelope in the order of PROTOCOL §10.3; the first failure
+    /// determines the error code.
     ///
     /// # Errors
-    /// [`EnvelopeError`] naming the first failed check.
-    pub fn accept(
-        &mut self,
-        token: &str,
-        me: &GateId,
-        now: UnixSecs,
-    ) -> Result<Envelope, EnvelopeError> {
-        let peers = &self.peers;
-        let (kid, payload) = token::verify(token, TYP_ENVELOPE, |kid| {
-            peers.get_key_value(kid).map(|(k, v)| (v, k.clone()))
-        })
-        .map_err(EnvelopeError::Token)?;
-        let env: Envelope = serde_json::from_slice(&payload).map_err(|_| EnvelopeError::Payload)?;
-        if env.v != ENVELOPE_V {
-            return Err(EnvelopeError::Version);
+    /// The [`WireErrorCode`] the gate answers with.
+    pub fn accept(&mut self, jws: &str, now: UnixSecs) -> Result<Accepted, WireErrorCode> {
+        if jws.len() > MAX_TOKEN_BYTES {
+            return Err(WireErrorCode::TooLarge);
         }
-        if env.from.as_str() != kid {
-            return Err(EnvelopeError::SenderMismatch);
+        let c = Compact::parse(jws).map_err(malformed)?;
+        if c.header.typ != Typ::Envelope {
+            return Err(WireErrorCode::Malformed);
         }
-        if &env.to != me {
-            return Err(EnvelopeError::NotForUs);
+        let raw: RawHead =
+            serde_json::from_slice(&c.payload).map_err(|_| WireErrorCode::Malformed)?;
+        if raw.v != 1 || !matches!(raw.kind.as_str(), "message" | "pair.confirmed" | "unpair") {
+            return Err(WireErrorCode::Unsupported);
         }
-        if env.sent_at.abs_diff(now) > FRESHNESS_SECS {
-            return Err(EnvelopeError::Stale);
+        let event = Event::parse(&c.payload).map_err(|_| WireErrorCode::Malformed)?;
+        let head = event.head();
+        let tenant = self
+            .tenants
+            .get(&head.aud)
+            .cloned()
+            .ok_or(WireErrorCode::NotPaired)?;
+        let (key, state) = *self
+            .peers
+            .get(&tenant, &head.iss)
+            .ok_or(WireErrorCode::NotPaired)?;
+        if c.header.kid != head.iss {
+            return Err(WireErrorCode::NotPaired);
         }
-        self.prune(now);
-        if !self.seen_ids.insert((env.from.clone(), env.msg_id.clone())) {
-            return Err(EnvelopeError::Replay);
+        token::verify(jws, Typ::Envelope, &head.iss, &key)
+            .map_err(|_| WireErrorCode::BadSignature)?;
+        if head.iat > now.saturating_add(SKEW_SECS) {
+            return Err(WireErrorCode::FromFuture);
         }
+        if now.saturating_sub(head.iat) > MAX_AGE_SECS {
+            return Err(WireErrorCode::Stale);
+        }
+        let digest = sha256(jws.as_bytes());
         self.seen
-            .insert((env.sent_at, env.from.clone(), env.msg_id.clone()));
-        Ok(env)
-    }
-
-    /// Forgets ids too old to pass the freshness check anyway.
-    fn prune(&mut self, now: UnixSecs) {
-        let cutoff = now.saturating_sub(FRESHNESS_SECS);
-        while let Some(first) = self.seen.first().cloned() {
-            if first.0 >= cutoff {
-                break;
+            .retain(|_, (_, at)| at.saturating_add(MAX_AGE_SECS + SKEW_SECS) > now);
+        let id = (head.iss.clone(), head.id.clone());
+        if let Some((stored, _)) = self.seen.get(&tenant, &id) {
+            if *stored != digest {
+                return Err(WireErrorCode::Conflict);
             }
-            self.seen.remove(&first);
-            self.seen_ids.remove(&(first.1, first.2));
+            return Ok(Accepted {
+                tenant,
+                event: None,
+                status: ReceiptStatus::Duplicate,
+                envelope_sha256: digest,
+            });
         }
+        if state == PeerState::PendingOwner {
+            return Err(WireErrorCode::PairingPending);
+        }
+        if let Event::Message(env) = &event {
+            let m = verify_received(env, &key, &tenant, &self.jtis, now).map_err(|e| match e {
+                MandateInvalid::Replay => WireErrorCode::MandateReplay,
+                _ => WireErrorCode::MandateInvalid,
+            })?;
+            self.jtis.prune(now);
+            self.jtis.record(&tenant, &m);
+        }
+        self.seen.insert(&tenant, id, (digest, now));
+        Ok(Accepted {
+            tenant,
+            event: Some(event),
+            status: ReceiptStatus::Accepted,
+            envelope_sha256: digest,
+        })
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use paseka_proto::envelope::Body;
+    use paseka_proto::envelope::MessageData;
+    use serde_json::Value;
 
     use super::*;
-    use crate::testkit::{key, nonce};
 
-    fn gate(seed: u8) -> GateId {
-        GateId::new(token::kid_of(&key(seed).verifying_key())).unwrap()
+    fn vectors() -> Value {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../contracts/fixtures/vectors/digests.json"
+        );
+        serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
     }
 
-    fn envelope(from: u8, to: u8, id: u8, sent_at: UnixSecs) -> String {
-        let env = Envelope {
-            v: ENVELOPE_V,
-            from: gate(from),
-            to: gate(to),
-            msg_id: nonce(id),
-            sent_at,
-            body: Body::Question {
-                thread: "t1".into(),
-                text: "what does bob think about x".into(),
-            },
-        };
-        let k = key(from);
-        token::sign(
-            &k,
-            &token::kid_of(&k.verifying_key()),
-            TYP_ENVELOPE,
-            &serde_json::to_vec(&env).unwrap(),
-        )
+    fn seed_key(v: &Value, name: &str) -> SigningKey {
+        let hex = v["signing_keys"][name]["seed_hex"].as_str().unwrap();
+        SigningKey::from_bytes(&Sha256::from_hex(hex).unwrap().0)
     }
 
-    fn inbound() -> Inbound {
-        let mut i = Inbound::default();
-        i.pair(key(1).verifying_key());
-        i
+    fn setup() -> (Receiver, String, UnixSecs) {
+        let v = vectors();
+        let env: Envelope<MessageData> =
+            serde_json::from_value(v["signed"]["envelope"]["payload"].clone()).unwrap();
+        let (alice, bob) = (seed_key(&v, "alice"), seed_key(&v, "bob"));
+        let jws = seal(&alice, &env);
+        assert_eq!(jws, v["signed"]["envelope"]["compact"].as_str().unwrap());
+        assert_eq!(
+            sha256(jws.as_bytes()).to_hex(),
+            v["signed"]["envelope"]["envelope_sha256"].as_str().unwrap()
+        );
+        let bob_tenant = TenantId::new("t_01JD0000000000000000000002").unwrap();
+        let mut r = Receiver::default();
+        r.add_tenant(token::key_id(&bob.verifying_key()), bob_tenant.clone());
+        r.set_peer(&bob_tenant, alice.verifying_key(), PeerState::Active);
+        (r, jws, env.iat + 1)
     }
 
     #[test]
-    fn paired_fresh_envelope_is_accepted_once() {
-        let mut i = inbound();
-        let t = envelope(1, 2, 1, 1000);
-        assert!(i.accept(&t, &gate(2), 1000).is_ok());
-        assert_eq!(i.accept(&t, &gate(2), 1001), Err(EnvelopeError::Replay));
-    }
-
-    #[test]
-    fn unpaired_misaddressed_and_stale_envelopes_are_refused() {
-        let mut i = inbound();
+    fn the_vector_envelope_is_accepted_once_then_duplicate() {
+        let (mut r, jws, now) = setup();
+        assert_eq!(r.accept(&jws, now).unwrap().status, ReceiptStatus::Accepted);
+        let again = r.accept(&jws, now).unwrap();
         assert_eq!(
-            i.accept(&envelope(3, 2, 1, 1000), &gate(2), 1000),
-            Err(EnvelopeError::Token(TokenError::UnknownKey))
-        );
-        assert_eq!(
-            i.accept(&envelope(1, 3, 1, 1000), &gate(2), 1000),
-            Err(EnvelopeError::NotForUs)
-        );
-        assert_eq!(
-            i.accept(
-                &envelope(1, 2, 1, 1000),
-                &gate(2),
-                1000 + FRESHNESS_SECS + 1
-            ),
-            Err(EnvelopeError::Stale)
+            (again.status, again.event),
+            (ReceiptStatus::Duplicate, None)
         );
     }
 
     #[test]
-    fn sender_field_must_match_the_signing_key() {
-        let mut i = inbound();
-        i.pair(key(3).verifying_key());
-        let env = Envelope {
-            v: ENVELOPE_V,
-            from: gate(3),
-            to: gate(2),
-            msg_id: nonce(1),
-            sent_at: 1000,
-            body: Body::Unknown,
-        };
-        let k = key(1);
-        let t = token::sign(
-            &k,
-            &token::kid_of(&k.verifying_key()),
-            TYP_ENVELOPE,
-            &serde_json::to_vec(&env).unwrap(),
+    fn stale_future_and_tampered_envelopes_are_refused() {
+        let (mut r, jws, now) = setup();
+        assert_eq!(
+            r.accept(&jws, now + MAX_AGE_SECS + 10),
+            Err(WireErrorCode::Stale)
         );
         assert_eq!(
-            i.accept(&t, &gate(2), 1000),
-            Err(EnvelopeError::SenderMismatch)
+            r.accept(&jws, now - SKEW_SECS - 10),
+            Err(WireErrorCode::FromFuture)
+        );
+        let mut parts: Vec<&str> = jws.split('.').collect();
+        let first = if parts[2].starts_with('A') { "B" } else { "A" };
+        let sig = format!("{first}{}", &parts[2][1..]);
+        parts[2] = &sig;
+        assert_eq!(
+            r.accept(&parts.join("."), now),
+            Err(WireErrorCode::BadSignature)
         );
     }
 }

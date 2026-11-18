@@ -33,6 +33,18 @@ impl<K: Ord, V> TenantMap<K, V> {
         self.inner.get(tenant)?.get(key)
     }
 
+    /// The value of `key` in `tenant`, inserted as `V::default()` when absent.
+    pub fn entry(&mut self, tenant: &TenantId, key: K) -> &mut V
+    where
+        V: Default,
+    {
+        self.inner
+            .entry(tenant.clone())
+            .or_default()
+            .entry(key)
+            .or_default()
+    }
+
     /// Mutable access to `key` in `tenant`'s partition only.
     pub fn get_mut(&mut self, tenant: &TenantId, key: &K) -> Option<&mut V> {
         self.inner.get_mut(tenant)?.get_mut(key)
@@ -60,10 +72,10 @@ mod tests {
     #[test]
     fn a_key_stored_for_one_tenant_is_invisible_to_another() {
         let mut m = TenantMap::default();
-        m.insert(&tenant("alice"), "draft-1", 1);
-        assert_eq!(m.get(&tenant("alice"), &"draft-1"), Some(&1));
-        assert_eq!(m.get(&tenant("bob"), &"draft-1"), None);
-        assert!(m.get_mut(&tenant("bob"), &"draft-1").is_none());
-        assert_eq!(m.len(&tenant("bob")), 0);
+        m.insert(&tenant(1), "draft-1", 1);
+        assert_eq!(m.get(&tenant(1), &"draft-1"), Some(&1));
+        assert_eq!(m.get(&tenant(2), &"draft-1"), None);
+        assert!(m.get_mut(&tenant(2), &"draft-1").is_none());
+        assert_eq!(m.len(&tenant(2)), 0);
     }
 }

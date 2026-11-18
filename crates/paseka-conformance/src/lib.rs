@@ -1,233 +1,114 @@
-//! Conformance attacks against paseka-gate.
+//! Conformance attacks CA-n of `docs/THREAT-MODEL.md` against paseka-gate.
 //!
 //! Each [`Attack`] tries one way to release bytes without the owner's consent and passes when
-//! the gate refuses. Attacks that need a running gate (consent bot, Mini App, HTTP) are listed
-//! as [`Outcome::Pending`] until the server exists, so the list stays the single checklist.
+//! the gate refuses. Attacks that need a part not built yet are [`Outcome::Pending`] with the
+//! missing part, so this table stays the single checklist.
 
 #![forbid(unsafe_code)]
 
-mod fixture;
-mod gate;
-mod mandates;
+mod consent;
+mod policy;
+mod wire;
+mod world;
 
 /// Result of one attack.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Outcome {
     /// The gate refused as required.
     Pass,
-    /// The gate let the attack through, or refused for the wrong reason.
+    /// The attack got through or was refused for the wrong reason.
     Fail(String),
-    /// Not runnable yet: needs the named component.
+    /// The attack needs a part that does not exist yet.
     Pending(&'static str),
 }
 
-/// One named attack.
+/// One conformance attack.
 #[derive(Debug, Clone, Copy)]
 pub struct Attack {
-    /// Stable id, used as the test name and in reports.
+    /// `CA-n`.
     pub id: &'static str,
+    /// The security property it tests, `SP-n`.
+    pub sp: &'static str,
     /// What the attacker tries.
     pub title: &'static str,
     /// Runs the attack.
     pub run: fn() -> Outcome,
 }
 
-const NEEDS_SERVER: &str = "a running gate (paseka serve)";
-const NEEDS_BOT: &str = "the consent bot and Mini App";
+/// Missing part: the gate daemon with storage and the agent HTTP/MCP server.
+pub const NEEDS_SERVER: &str = "the gate daemon (paseka serve)";
+/// Missing part: the consent bot and Mini App with initData verification.
+pub const NEEDS_BOT: &str = "the consent bot and Mini App";
+/// Missing part: pairing messages and invite codes.
+pub const NEEDS_PAIRING: &str = "pairing (PROTOCOL §11)";
+/// Missing part: the per-tenant hash-chained journal.
+pub const NEEDS_JOURNAL: &str = "the journal";
+/// Missing part: an installed gate running as its own unix user.
+pub const NEEDS_INSTALL: &str = "an installed gate (install skill)";
 
-fn pending_server() -> Outcome {
-    Outcome::Pending(NEEDS_SERVER)
+macro_rules! attacks {
+    ($($id:literal $sp:literal $title:literal => $run:expr;)*) => {
+        /// Every conformance attack, in CA order.
+        pub const ATTACKS: &[Attack] = &[$(Attack { id: $id, sp: $sp, title: $title, run: $run }),*];
+    };
 }
 
-fn pending_bot() -> Outcome {
-    Outcome::Pending(NEEDS_BOT)
+attacks! {
+    "CA-1" "SP-1" "agent tool list offers an approval, mandate or settings operation" => policy::ca01_no_approve_tool;
+    "CA-2" "SP-1" "propose, revise or share with approved, proof, mandate, nonce, evidence or level" => policy::ca02_proof_like_fields;
+    "CA-3" "SP-2" "free text to a T0 peer, prompt never answered" => consent::ca03_unanswered_prompt_expires;
+    "CA-4" "SP-2" "forged Telegram update without or with a wrong webhook secret" => || Outcome::Pending(NEEDS_BOT);
+    "CA-5" "SP-2" "evidence-shaped JSON in the journal, inbox or a draft body" => || Outcome::Pending(NEEDS_SERVER);
+    "CA-6" "SP-3" "revise after the prompt, then press the old Approve button" => consent::ca06_old_button_after_revise;
+    "CA-7" "SP-3" "revise or withdraw after approval" => consent::ca07_revise_or_withdraw_after_approval;
+    "CA-8" "SP-3" "attachment swapped between prompt and decision" => consent::ca08_attachment_swap;
+    "CA-9" "SP-3" "Mini App decision with another release digest" => consent::ca09_miniapp_digest_mismatch;
+    "CA-10" "SP-4" "the same approval delivered twice" => consent::ca10_double_press;
+    "CA-11" "SP-4" "Mini App decision replayed with the same initData" => || Outcome::Pending(NEEDS_BOT);
+    "CA-12" "SP-4" "released envelope replayed to the peer" => wire::ca12_envelope_replay;
+    "CA-13" "SP-5" "Approve pressed after the prompt TTL" => consent::ca13_press_after_ttl;
+    "CA-14" "SP-5" "initData with a stale or future auth_date" => || Outcome::Pending(NEEDS_BOT);
+    "CA-15" "SP-6" "a non-approver presses a forwarded prompt" => consent::ca15_non_approver;
+    "CA-16" "SP-6" "initData valid by bot-token HMAC only" => || Outcome::Pending(NEEDS_BOT);
+    "CA-17" "SP-6" "initData signed for another bot id" => || Outcome::Pending(NEEDS_BOT);
+    "CA-18" "SP-7" "classifier says safe for free text" => policy::ca18_classifier_says_safe;
+    "CA-19" "SP-7" "canary in the body, obfuscated or base64-encoded" => policy::ca19_canary_blocks;
+    "CA-20" "SP-7" "owner edit adds a canary and approves" => policy::ca20_owner_edit_with_canary;
+    "CA-21" "SP-7" "required level has no configured channel" => consent::ca21_level_without_channel;
+    "CA-22" "SP-8" "agent reads detector results from tool output" => policy::ca22_no_oracle;
+    "CA-23" "SP-9" "security settings edited in the config after the ceremony" => || Outcome::Pending(NEEDS_SERVER);
+    "CA-24" "SP-9" "agent tool used as a side path to settings" => policy::ca24_no_settings_side_path;
+    "CA-25" "SP-10" "open mandate beyond its rate, lifetime or length" => policy::ca25_open_mandate_bounds;
+    "CA-26" "SP-10" "link or long number in a template field" => policy::ca26_template_field_smuggle;
+    "CA-27" "SP-10" "open mandate used after revocation" => policy::ca27_revoked_mandate;
+    "CA-28" "SP-10" "second open mandate while one is pending" => policy::ca28_second_open_mandate;
+    "CA-29" "SP-11" "share of a doc not on an open shelf, unknown, or path-like" => policy::ca29_share_outside_shelf;
+    "CA-30" "SP-11" "share note with a link, a blob or 201 characters" => policy::ca30_share_note_smuggle;
+    "CA-31" "SP-12" "envelope with a bad signature, unknown key, kid mismatch, alg none or wrong typ" => wire::ca31_forged_envelopes;
+    "CA-32" "SP-12" "envelope from tenant A's peer addressed to tenant B" => wire::ca32_cross_tenant_envelope;
+    "CA-33" "SP-13" "envelope replayed after the window, from the future, or same id other bytes" => wire::ca33_wire_windows;
+    "CA-34" "SP-14" "mandate for other content, recipient, thread, lifetime, level or a reused jti" => wire::ca34_mandate_mismatch;
+    "CA-35" "SP-15" "used or expired invite code" => || Outcome::Pending(NEEDS_PAIRING);
+    "CA-36" "SP-15" "messages before the inviter's owner confirmed the pairing" => wire::ca36_pairing_pending;
+    "CA-37" "SP-15" "pair accept signed by a key other than the one in the pair URI" => || Outcome::Pending(NEEDS_PAIRING);
+    "CA-38" "SP-16" "tenant A's agent token with tenant B's ids" => || Outcome::Pending(NEEDS_SERVER);
+    "CA-39" "SP-16" "approver of tenant A decides tenant B's request on a shared bot" => consent::ca39_cross_tenant_decision;
+    "CA-40" "SP-17" "bidi, zero-width or control characters in the body" => policy::ca40_invisible_characters;
+    "CA-41" "SP-17" "body longer than the A1 prompt capacity" => policy::ca41_over_prompt_capacity;
+    "CA-42" "SP-18" "agent's unix user reads the gate state" => || Outcome::Pending(NEEDS_INSTALL);
+    "CA-43" "SP-19" "agent proposes 100 drafts in a minute" => || Outcome::Pending(NEEDS_SERVER);
+    "CA-44" "SP-19" "peer burst above its volume limit" => || Outcome::Pending(NEEDS_SERVER);
+    "CA-45" "SP-20" "one journal row modified in the database" => || Outcome::Pending(NEEDS_JOURNAL);
+    "CA-46" "SP-21" "gate killed between decision and delivery" => || Outcome::Pending(NEEDS_SERVER);
+    "CA-47" "SP-7" "A1 button approval for a request that needs A2" => consent::ca47_weaker_channel;
 }
-
-/// Every attack, in report order.
-pub const ATTACKS: &[Attack] = &[
-    Attack {
-        id: "forged_mandate",
-        title: "mandate signed by a key that is not an approver",
-        run: mandates::forged,
-    },
-    Attack {
-        id: "tampered_mandate",
-        title: "payload edited after signing",
-        run: mandates::tampered,
-    },
-    Attack {
-        id: "alg_confusion",
-        title: "header alg none or an empty signature",
-        run: mandates::alg_confusion,
-    },
-    Attack {
-        id: "expired_mandate",
-        title: "mandate used after exp",
-        run: mandates::expired,
-    },
-    Attack {
-        id: "overlong_mandate",
-        title: "closed mandate with a lifetime far beyond 60 s",
-        run: mandates::overlong,
-    },
-    Attack {
-        id: "replayed_mandate",
-        title: "the same mandate used twice",
-        run: mandates::replayed,
-    },
-    Attack {
-        id: "stale_nonce",
-        title: "nonce never issued or expired",
-        run: mandates::stale_nonce,
-    },
-    Attack {
-        id: "preview_swap",
-        title: "owner approved text A, agent releases text B",
-        run: mandates::preview_swap,
-    },
-    Attack {
-        id: "recipient_swap",
-        title: "mandate for bob used for carol",
-        run: mandates::recipient_swap,
-    },
-    Attack {
-        id: "attachment_swap",
-        title: "attachment added after approval",
-        run: mandates::attachment_swap,
-    },
-    Attack {
-        id: "cross_tenant_mandate",
-        title: "another tenant's approver signs for this tenant",
-        run: mandates::cross_tenant,
-    },
-    Attack {
-        id: "level_downgrade",
-        title: "A1 button approval for a draft that needs A2",
-        run: mandates::level_downgrade,
-    },
-    Attack {
-        id: "unknown_channel",
-        title: "proof from a channel the gate does not know",
-        run: mandates::unknown_channel,
-    },
-    Attack {
-        id: "open_mandate_by_policy",
-        title: "open mandate signed without a human channel",
-        run: mandates::open_by_policy,
-    },
-    Attack {
-        id: "open_mandate_slot_smuggle",
-        title: "link smuggled through an open-mandate template slot",
-        run: mandates::open_slot_smuggle,
-    },
-    Attack {
-        id: "open_mandate_rate",
-        title: "hijacked agent floods under an open mandate",
-        run: mandates::open_rate,
-    },
-    Attack {
-        id: "second_open_mandate",
-        title: "new open mandate presented before the previous is refused",
-        run: mandates::second_open,
-    },
-    Attack {
-        id: "canary_block",
-        title: "canary marker released with a valid approval",
-        run: gate::canary_block,
-    },
-    Attack {
-        id: "canary_obfuscated",
-        title: "canary hidden by case, separators or base64",
-        run: gate::canary_obfuscated,
-    },
-    Attack {
-        id: "agent_approve_absent",
-        title: "agent calls approve or an alias",
-        run: gate::agent_approve_absent,
-    },
-    Attack {
-        id: "revise_after_approval",
-        title: "draft edited after the owner approved it",
-        run: gate::revise_after_approval,
-    },
-    Attack {
-        id: "classifier_says_safe",
-        title: "fuzzy safe verdict lowers free text below A1",
-        run: gate::classifier_says_safe,
-    },
-    Attack {
-        id: "share_outside_shelf",
-        title: "share pointer to a document not open to the peer",
-        run: gate::share_outside_shelf,
-    },
-    Attack {
-        id: "share_path_traversal",
-        title: "share pointer escaping the shelf with ..",
-        run: gate::share_path_traversal,
-    },
-    Attack {
-        id: "share_note_smuggle",
-        title: "share note carrying a link or a number",
-        run: gate::share_note_smuggle,
-    },
-    Attack {
-        id: "envelope_forged",
-        title: "gate envelope signed by an unpaired key",
-        run: gate::envelope_forged,
-    },
-    Attack {
-        id: "envelope_replay",
-        title: "gate envelope delivered twice",
-        run: gate::envelope_replay,
-    },
-    Attack {
-        id: "cross_tenant_nonce",
-        title: "nonce issued for one tenant consumed by another",
-        run: gate::cross_tenant_nonce,
-    },
-    Attack {
-        id: "button_pressed_by_stranger",
-        title: "A1 button pressed by a Telegram user who is not the owner",
-        run: pending_bot,
-    },
-    Attack {
-        id: "mini_app_hmac_only",
-        title: "Mini App initData valid by bot-token HMAC only",
-        run: pending_bot,
-    },
-    Attack {
-        id: "mini_app_stale_auth_date",
-        title: "Mini App initData with an old auth_date",
-        run: pending_bot,
-    },
-    Attack {
-        id: "approval_text_in_chat",
-        title: "peer or agent text that looks like an owner approval",
-        run: pending_bot,
-    },
-    Attack {
-        id: "config_edit_without_consent",
-        title: "security settings changed by editing config",
-        run: pending_server,
-    },
-    Attack {
-        id: "cross_tenant_http",
-        title: "tenant A's agent token reads tenant B's drafts",
-        run: pending_server,
-    },
-    Attack {
-        id: "agent_reaches_approval_endpoint",
-        title: "agent-facing listener serves an approval route",
-        run: pending_server,
-    },
-];
 
 /// Runs every attack.
 pub fn run_all() -> Vec<(&'static Attack, Outcome)> {
     ATTACKS.iter().map(|a| (a, (a.run)())).collect()
 }
 
-/// Runs the attack with `id`; `None` if there is no such attack.
+/// Runs the attack `id` (`CA-n`).
 pub fn run(id: &str) -> Option<Outcome> {
     ATTACKS.iter().find(|a| a.id == id).map(|a| (a.run)())
 }

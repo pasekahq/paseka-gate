@@ -1,6 +1,6 @@
-//! One test per conformance attack. Pending attacks are ignored until the gate server exists.
+//! One test per conformance attack CA-n. Pending attacks are ignored with the missing part.
 
-use paseka_conformance::{Outcome, run};
+use paseka_conformance::{ATTACKS, Outcome, run};
 
 fn check(id: &str) {
     match run(id) {
@@ -10,183 +10,259 @@ fn check(id: &str) {
 }
 
 #[test]
-fn forged_mandate() {
-    check("forged_mandate");
+fn attacks_are_numbered_ca_1_to_47_in_order() {
+    assert_eq!(ATTACKS.len(), 47);
+    for (i, a) in ATTACKS.iter().enumerate() {
+        assert_eq!(a.id, format!("CA-{}", i + 1));
+    }
 }
 
 #[test]
-fn tampered_mandate() {
-    check("tampered_mandate");
+fn ca01_no_approve_tool() {
+    check("CA-1");
 }
 
 #[test]
-fn alg_confusion() {
-    check("alg_confusion");
+fn ca02_proof_like_fields() {
+    check("CA-2");
 }
 
 #[test]
-fn expired_mandate() {
-    check("expired_mandate");
+fn ca03_unanswered_prompt_expires() {
+    check("CA-3");
 }
 
 #[test]
-fn overlong_mandate() {
-    check("overlong_mandate");
+#[ignore = "needs the consent bot and Mini App"]
+fn ca04_forged_telegram_update_without_wrong() {
+    check("CA-4");
 }
 
 #[test]
-fn replayed_mandate() {
-    check("replayed_mandate");
+#[ignore = "needs the gate daemon"]
+fn ca05_evidenceshaped_json_journal_inbox_draft() {
+    check("CA-5");
 }
 
 #[test]
-fn stale_nonce() {
-    check("stale_nonce");
+fn ca06_old_button_after_revise() {
+    check("CA-6");
 }
 
 #[test]
-fn preview_swap() {
-    check("preview_swap");
+fn ca07_revise_or_withdraw_after_approval() {
+    check("CA-7");
 }
 
 #[test]
-fn recipient_swap() {
-    check("recipient_swap");
+fn ca08_attachment_swap() {
+    check("CA-8");
 }
 
 #[test]
-fn attachment_swap() {
-    check("attachment_swap");
+fn ca09_miniapp_digest_mismatch() {
+    check("CA-9");
 }
 
 #[test]
-fn cross_tenant_mandate() {
-    check("cross_tenant_mandate");
+fn ca10_double_press() {
+    check("CA-10");
 }
 
 #[test]
-fn level_downgrade() {
-    check("level_downgrade");
+#[ignore = "needs the consent bot and Mini App"]
+fn ca11_mini_app_decision_replayed_same() {
+    check("CA-11");
 }
 
 #[test]
-fn unknown_channel() {
-    check("unknown_channel");
+fn ca12_envelope_replay() {
+    check("CA-12");
 }
 
 #[test]
-fn open_mandate_by_policy() {
-    check("open_mandate_by_policy");
+fn ca13_press_after_ttl() {
+    check("CA-13");
 }
 
 #[test]
-fn open_mandate_slot_smuggle() {
-    check("open_mandate_slot_smuggle");
+#[ignore = "needs the consent bot and Mini App"]
+fn ca14_initdata_stale_future_authdate() {
+    check("CA-14");
 }
 
 #[test]
-fn open_mandate_rate() {
-    check("open_mandate_rate");
+fn ca15_non_approver() {
+    check("CA-15");
 }
 
 #[test]
-fn second_open_mandate() {
-    check("second_open_mandate");
+#[ignore = "needs the consent bot and Mini App"]
+fn ca16_initdata_valid_bottoken_hmac_only() {
+    check("CA-16");
 }
 
 #[test]
-fn canary_block() {
-    check("canary_block");
+#[ignore = "needs the consent bot and Mini App"]
+fn ca17_initdata_signed_for_another_bot() {
+    check("CA-17");
 }
 
 #[test]
-fn canary_obfuscated() {
-    check("canary_obfuscated");
+fn ca18_classifier_says_safe() {
+    check("CA-18");
 }
 
 #[test]
-fn agent_approve_absent() {
-    check("agent_approve_absent");
+fn ca19_canary_blocks() {
+    check("CA-19");
 }
 
 #[test]
-fn revise_after_approval() {
-    check("revise_after_approval");
+fn ca20_owner_edit_with_canary() {
+    check("CA-20");
 }
 
 #[test]
-fn classifier_says_safe() {
-    check("classifier_says_safe");
+fn ca21_level_without_channel() {
+    check("CA-21");
 }
 
 #[test]
-fn share_outside_shelf() {
-    check("share_outside_shelf");
+fn ca22_no_oracle() {
+    check("CA-22");
 }
 
 #[test]
-fn share_path_traversal() {
-    check("share_path_traversal");
+#[ignore = "needs the gate daemon"]
+fn ca23_security_settings_edited_config_after() {
+    check("CA-23");
 }
 
 #[test]
-fn share_note_smuggle() {
-    check("share_note_smuggle");
+fn ca24_no_settings_side_path() {
+    check("CA-24");
 }
 
 #[test]
-fn envelope_forged() {
-    check("envelope_forged");
+fn ca25_open_mandate_bounds() {
+    check("CA-25");
 }
 
 #[test]
-fn envelope_replay() {
-    check("envelope_replay");
+fn ca26_template_field_smuggle() {
+    check("CA-26");
 }
 
 #[test]
-fn cross_tenant_nonce() {
-    check("cross_tenant_nonce");
+fn ca27_revoked_mandate() {
+    check("CA-27");
 }
 
 #[test]
-#[ignore = "needs a running gate"]
-fn button_pressed_by_stranger() {
-    check("button_pressed_by_stranger");
+fn ca28_second_open_mandate() {
+    check("CA-28");
 }
 
 #[test]
-#[ignore = "needs a running gate"]
-fn mini_app_hmac_only() {
-    check("mini_app_hmac_only");
+fn ca29_share_outside_shelf() {
+    check("CA-29");
 }
 
 #[test]
-#[ignore = "needs a running gate"]
-fn mini_app_stale_auth_date() {
-    check("mini_app_stale_auth_date");
+fn ca30_share_note_smuggle() {
+    check("CA-30");
 }
 
 #[test]
-#[ignore = "needs a running gate"]
-fn approval_text_in_chat() {
-    check("approval_text_in_chat");
+fn ca31_forged_envelopes() {
+    check("CA-31");
 }
 
 #[test]
-#[ignore = "needs a running gate"]
-fn config_edit_without_consent() {
-    check("config_edit_without_consent");
+fn ca32_cross_tenant_envelope() {
+    check("CA-32");
 }
 
 #[test]
-#[ignore = "needs a running gate"]
-fn cross_tenant_http() {
-    check("cross_tenant_http");
+fn ca33_wire_windows() {
+    check("CA-33");
 }
 
 #[test]
-#[ignore = "needs a running gate"]
-fn agent_reaches_approval_endpoint() {
-    check("agent_reaches_approval_endpoint");
+fn ca34_mandate_mismatch() {
+    check("CA-34");
+}
+
+#[test]
+#[ignore = "needs pairing"]
+fn ca35_used_expired_invite_code() {
+    check("CA-35");
+}
+
+#[test]
+fn ca36_pairing_pending() {
+    check("CA-36");
+}
+
+#[test]
+#[ignore = "needs pairing"]
+fn ca37_pair_accept_signed_key_other() {
+    check("CA-37");
+}
+
+#[test]
+#[ignore = "needs the gate daemon"]
+fn ca38_tenant_as_agent_token_tenant() {
+    check("CA-38");
+}
+
+#[test]
+fn ca39_cross_tenant_decision() {
+    check("CA-39");
+}
+
+#[test]
+fn ca40_invisible_characters() {
+    check("CA-40");
+}
+
+#[test]
+fn ca41_over_prompt_capacity() {
+    check("CA-41");
+}
+
+#[test]
+#[ignore = "needs an installed gate"]
+fn ca42_agents_unix_user_reads_gate() {
+    check("CA-42");
+}
+
+#[test]
+#[ignore = "needs the gate daemon"]
+fn ca43_agent_proposes_100_drafts_minute() {
+    check("CA-43");
+}
+
+#[test]
+#[ignore = "needs the gate daemon"]
+fn ca44_peer_burst_above_its_volume() {
+    check("CA-44");
+}
+
+#[test]
+#[ignore = "needs the journal"]
+fn ca45_one_journal_row_modified_database() {
+    check("CA-45");
+}
+
+#[test]
+#[ignore = "needs the gate daemon"]
+fn ca46_gate_killed_between_decision_and() {
+    check("CA-46");
+}
+
+#[test]
+fn ca47_weaker_channel() {
+    check("CA-47");
 }

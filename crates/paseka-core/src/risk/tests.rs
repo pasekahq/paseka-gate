@@ -15,6 +15,8 @@ fn free(text: &str) -> Draft<'_> {
         new_recipient: false,
         sources: &[],
         fuzzy_hint: None,
+        tripwire: false,
+        open_mandate: false,
     }
 }
 
@@ -28,7 +30,7 @@ fn plain_prose_has_no_structural_flags() {
 
 #[test]
 fn structural_detectors_find_each_kind() {
-    let cases: [(&str, FlagKind); 12] = [
+    let cases: [(&str, FlagKind); 13] = [
         ("go to https://example.org/a", FlagKind::Link),
         ("go to example.org/a", FlagKind::Link),
         ("www.example.org", FlagKind::Link),
@@ -44,6 +46,7 @@ fn structural_detectors_find_each_kind() {
         ("key sk-abcdefghijklmnopqrstuvwxyz", FlagKind::Secret),
         ("-----BEGIN OPENSSH PRIVATE KEY-----\nabc", FlagKind::Secret),
         ("hi\u{200b}there", FlagKind::InvisibleChar),
+        ("bell\u{7}here", FlagKind::InvisibleChar),
     ];
     for (text, kind) in cases {
         assert!(kinds(text).contains(&kind), "{text:?} -> {:?}", kinds(text));
@@ -82,12 +85,12 @@ fn free_text_needs_a1_structured_a0_and_any_flag_a2() {
         Required::Level(Level::A1)
     );
     let s = Draft {
-        kind: OutputKind::Structured,
+        kind: OutputKind::Template,
         ..free("yes")
     };
     assert_eq!(assess(&r, &s).required, Required::Level(Level::A0));
     let s = Draft {
-        kind: OutputKind::Structured,
+        kind: OutputKind::Template,
         ..free("yes, https://example.org/x")
     };
     assert_eq!(assess(&r, &s).required, Required::Level(Level::A2));
@@ -120,7 +123,28 @@ fn a_fuzzy_safe_verdict_never_lowers_the_level() {
         fuzzy_hint: Some(Level::A3),
         ..free("sounds good")
     };
-    assert_eq!(assess(&r, &d).required, Required::Level(Level::A3));
+    assert_eq!(assess(&r, &d).required, Required::Level(Level::A2));
+}
+
+#[test]
+fn open_mandate_releases_at_a0_only_without_any_flag() {
+    let r = OwnerRules::default();
+    let clean = Draft {
+        open_mandate: true,
+        ..free("sounds good")
+    };
+    assert_eq!(assess(&r, &clean).required, Required::Level(Level::A0));
+    let link = Draft {
+        open_mandate: true,
+        ..free("see https://example.org/x")
+    };
+    assert_eq!(assess(&r, &link).required, Required::Level(Level::A2));
+    let tripwire = Draft {
+        open_mandate: true,
+        tripwire: true,
+        ..free("sounds good")
+    };
+    assert_eq!(assess(&r, &tripwire).required, Required::Level(Level::A2));
 }
 
 #[test]
@@ -188,22 +212,4 @@ fn sensitive_source_read_needs_a2_plus() {
         ..free("ok")
     };
     assert_eq!(assess(&r, &d).required, Required::Level(Level::A2Plus));
-}
-
-#[test]
-fn agent_view_hides_owner_dictionary_and_canary_flags() {
-    let mut r = OwnerRules::default();
-    r.add_term("anna");
-    r.add_canary("canary-marker-0001").unwrap();
-    let a = assess(&r, &free("anna canary-marker-0001 https://example.org/x"));
-    let seen: Vec<FlagKind> = redact_for_agent(&a.flags)
-        .into_iter()
-        .map(|f| f.kind)
-        .collect();
-    assert_eq!(seen, vec![FlagKind::Link]);
-    assert!(
-        redact_for_agent(&a.flags)
-            .iter()
-            .all(|f| f.detail.is_empty())
-    );
 }

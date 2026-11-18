@@ -9,15 +9,66 @@ use std::collections::BTreeSet;
 use base64::Engine as _;
 use base64::engine::general_purpose::{STANDARD_NO_PAD, URL_SAFE_NO_PAD};
 use paseka_proto::Level;
-use paseka_proto::draft::{Flag, FlagKind};
 
 /// Default maximum text length in bytes before a [`FlagKind::TooLong`] flag.
 pub const DEFAULT_MAX_LEN: usize = 4000;
-const MIN_BASE64_RUN: usize = 40;
+const MIN_BASE64_RUN: usize = 24;
 const MIN_HEX_RUN: usize = 32;
 const MIN_LONG_NUMBER_DIGITS: usize = 9;
 const MIN_CANARY_CHARS: usize = 8;
 const SHINGLE_WORDS: usize = 5;
+
+/// Kind of a risk flag shown on the owner's approval screen. Never shown to the agent (SP-8).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum FlagKind {
+    /// URL, scheme link or e-mail address.
+    Link,
+    /// Long base64-looking run.
+    Base64Blob,
+    /// Long hex run.
+    HexBlob,
+    /// Long digit run (phones, ids, account numbers).
+    LongNumber,
+    /// Luhn-valid card number.
+    CardNumber,
+    /// Checksum-valid IBAN.
+    Iban,
+    /// API key, token or private key.
+    Secret,
+    /// Invisible, bidirectional or control character.
+    InvisibleChar,
+    /// Text longer than the A1 prompt capacity.
+    TooLong,
+    /// Has attachments.
+    Attachment,
+    /// Recipient never received anything before.
+    NewRecipient,
+    /// Owner dictionary term.
+    Dictionary,
+    /// Near-verbatim match of a sensitive-folder fingerprint.
+    Fingerprint,
+    /// Sensitive source read during the peer turn.
+    SensitiveSource,
+    /// A fuzzy check raised the level.
+    Fuzzy,
+    /// The tenant is in tripwire mode.
+    Tripwire,
+    /// Owner canary marker. Always blocks.
+    Canary,
+}
+
+/// A risk flag with the byte range it covers in the text, if any.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Flag {
+    /// Kind.
+    pub kind: FlagKind,
+    /// Byte offset of the match start.
+    pub start: Option<usize>,
+    /// Byte offset of the match end.
+    pub end: Option<usize>,
+    /// Short owner-facing detail; never the matched secret itself.
+    pub detail: String,
+}
 
 /// Requirement for releasing a draft. Ordered by friction; [`Required::Block`] is the top.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -47,10 +98,12 @@ impl Assessment {
 /// What the draft is, which sets the base requirement.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutputKind {
-    /// Free text: base A1.
+    /// Free text: base A1 (S1).
     FreeText,
-    /// Structured or template output: base A0.
-    Structured,
+    /// A rendered owner template: no base floor.
+    Template,
+    /// A shelf share read by the gate: no base floor.
+    Share,
 }
 
 /// A source read during the peer-started turn.
@@ -123,15 +176,19 @@ pub struct Draft<'a> {
     pub new_recipient: bool,
     /// Sources read during the turn.
     pub sources: &'a [SourceRead],
-    /// Level suggested by a fuzzy check (embeddings, classifier). Can only raise.
+    /// Level suggested by a fuzzy check (embeddings, classifier). Can only raise, to A2 at most.
     pub fuzzy_hint: Option<Level>,
+    /// Whether the tenant is in tripwire mode (S11).
+    pub tripwire: bool,
+    /// Whether an active open mandate matches this revision (S12).
+    pub open_mandate: bool,
 }
 
 /// Evaluates `d` against `rules`.
 pub fn assess(rules: &OwnerRules, d: &Draft<'_>) -> Assessment {
     let base = match d.kind {
         OutputKind::FreeText => Level::A1,
-        OutputKind::Structured => Level::A0,
+        OutputKind::Template | OutputKind::Share => Level::A0,
     };
     let mut a = Assessment {
         required: Required::Level(base),
@@ -180,37 +237,24 @@ pub fn assess(rules: &OwnerRules, d: &Draft<'_>) -> Assessment {
             .push(flag(FlagKind::SensitiveSource, None, detail.into()));
         a.raise(Required::Level(Level::A2Plus));
     }
-    if let Some(hint) = d.fuzzy_hint {
-        a.raise(Required::Level(hint));
+    if let Some(hint) = d.fuzzy_hint.filter(|&h| h > Level::A0) {
+        let capped = hint.min(Level::A2);
+        a.flags
+            .push(flag(FlagKind::Fuzzy, None, capped.to_string()));
+        a.raise(Required::Level(capped));
+    }
+    if d.tripwire {
+        a.flags.push(flag(FlagKind::Tripwire, None, String::new()));
+        a.raise(Required::Level(Level::A2));
     }
     if canary_hit(rules, d.text) {
         a.flags.push(flag(FlagKind::Canary, None, String::new()));
         a.raise(Required::Block);
     }
+    if d.open_mandate && a.flags.is_empty() {
+        a.required = Required::Level(Level::A0);
+    }
     a
-}
-
-/// Flags the agent may see: structural kinds without detail. Dictionary, fingerprint, source
-/// and canary flags stay on the owner's screen, so a hijacked agent gets no oracle for them.
-pub fn redact_for_agent(flags: &[Flag]) -> Vec<Flag> {
-    flags
-        .iter()
-        .filter(|f| {
-            !matches!(
-                f.kind,
-                FlagKind::Dictionary
-                    | FlagKind::Fingerprint
-                    | FlagKind::SensitiveSource
-                    | FlagKind::Canary
-            )
-        })
-        .map(|f| Flag {
-            kind: f.kind,
-            start: f.start,
-            end: f.end,
-            detail: String::new(),
-        })
-        .collect()
 }
 
 fn flag(kind: FlagKind, range: Option<(usize, usize)>, detail: String) -> Flag {
@@ -244,7 +288,8 @@ pub fn structural(text: &str) -> Vec<Flag> {
 }
 
 fn is_invisible(c: char) -> bool {
-    matches!(c as u32,
+    (c.is_control() && c != '\t' && c != '\n')
+        || matches!(c as u32,
         0x00AD | 0x180E | 0x200B..=0x200F | 0x2028..=0x202E | 0x2060..=0x2064 | 0x2066..=0x2069
         | 0xFEFF | 0xE0000..=0xE007F)
 }

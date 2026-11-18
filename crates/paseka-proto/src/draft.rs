@@ -1,30 +1,28 @@
-//! Outbound drafts and their lifecycle.
+//! Draft states and the coarse reasons shown to the agent (PROTOCOL §4).
 
 use serde::{Deserialize, Serialize};
 
-use crate::mandate::AttachmentRef;
-use crate::{DraftId, Level, PeerId, Sha256, TenantId};
-
-/// Lifecycle state of a draft.
+/// Draft state. Informational for agent readers: unknown values map to [`Self::Unknown`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DraftState {
-    /// Proposed by the agent, not yet assessed.
-    Proposed,
-    /// Assessed, waiting for the owner at the given level.
-    AwaitingApproval,
-    /// Approved by a valid mandate, queued for delivery.
+    /// Evaluated; an approval request is out to the owner.
+    AwaitingConsent,
+    /// A mandate is issued; release not yet committed.
     Approved,
-    /// Delivered to the peer gate.
-    Sent,
-    /// Withdrawn by the agent.
-    Withdrawn,
-    /// Refused by the owner.
-    Refused,
-    /// Blocked by a hard rule (canary, secret); no approval can release it.
-    Blocked,
-    /// Approval window passed.
+    /// The envelope is committed to the outbox.
+    Released,
+    /// The owner refused.
+    Denied,
+    /// The prompt TTL or the mandate `exp` passed.
     Expired,
+    /// The agent withdrew it.
+    Withdrawn,
+    /// Policy forbids release.
+    Blocked,
+    /// A state this build does not know.
+    #[serde(other)]
+    Unknown,
 }
 
 impl DraftState {
@@ -32,89 +30,53 @@ impl DraftState {
     pub fn is_terminal(self) -> bool {
         matches!(
             self,
-            Self::Sent | Self::Withdrawn | Self::Refused | Self::Blocked | Self::Expired
+            Self::Released | Self::Denied | Self::Expired | Self::Withdrawn | Self::Blocked
         )
     }
 }
 
-/// Kind of a risk flag shown on the approval screen.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+/// Coarse reason of a terminal state other than `released`. Informational.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum FlagKind {
-    /// URL or scheme link.
-    Link,
-    /// Long base64-looking run.
-    Base64Blob,
-    /// Long hex run.
-    HexBlob,
-    /// Long digit run (phones, ids, account numbers).
-    LongNumber,
-    /// Luhn-valid card number.
-    CardNumber,
-    /// Checksum-valid IBAN.
-    Iban,
-    /// API key, token or private key.
-    Secret,
-    /// Invisible or bidirectional control character.
-    InvisibleChar,
-    /// Text longer than the limit.
-    TooLong,
-    /// Has attachments.
-    Attachment,
-    /// Recipient never received anything before.
-    NewRecipient,
-    /// Owner dictionary term.
-    Dictionary,
-    /// Near-verbatim match of a sensitive-folder fingerprint.
-    Fingerprint,
-    /// Sensitive source read during the peer turn (MCP log).
-    SensitiveSource,
-    /// Owner canary marker. Always blocks.
-    Canary,
-    /// A flag kind this build does not know.
+pub enum Reason {
+    /// Denied by the owner.
+    Owner,
+    /// Expired.
+    Timeout,
+    /// Withdrawn by the agent.
+    Agent,
+    /// Any block.
+    Policy,
+    /// Unexpected failure.
+    Internal,
+    /// A value this build does not know.
     #[serde(other)]
     Unknown,
 }
 
-/// A risk flag with the byte range it covers in the text, if any.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Flag {
-    /// Kind.
-    pub kind: FlagKind,
-    /// Byte offset of the match start.
-    #[serde(default)]
-    pub start: Option<usize>,
-    /// Byte offset of the match end.
-    #[serde(default)]
-    pub end: Option<usize>,
-    /// Short owner-facing detail; never the matched secret itself.
-    #[serde(default)]
-    pub detail: String,
+/// Delivery sub-state of a released draft. Informational.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeliveryState {
+    /// Not yet acknowledged.
+    Pending,
+    /// A signed receipt is stored.
+    Delivered,
+    /// Retry horizon passed or a non-retryable error.
+    Failed,
+    /// A value this build does not know.
+    #[serde(other)]
+    Unknown,
 }
 
-/// An outbound draft as stored by the gate.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Draft {
-    /// Id.
-    pub id: DraftId,
-    /// Owning tenant.
-    pub tenant: TenantId,
-    /// Recipient.
-    pub to: PeerId,
-    /// Revision, incremented by every `revise`.
-    pub revision: u32,
-    /// Exact text.
-    pub text: String,
-    /// Attachments.
-    #[serde(default)]
-    pub attachments: Vec<AttachmentRef>,
-    /// Digest of `text`.
-    pub content_sha256: Sha256,
-    /// Required approval level.
-    pub level: Level,
-    /// Flags found by the risk evaluation.
-    #[serde(default)]
-    pub flags: Vec<Flag>,
-    /// State.
-    pub state: DraftState,
+/// What the agent proposed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DraftKind {
+    /// Free text.
+    FreeText,
+    /// A rendered owner template.
+    Template,
+    /// A shelf share read by the gate.
+    Share,
 }

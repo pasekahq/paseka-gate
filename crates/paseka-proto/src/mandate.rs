@@ -1,104 +1,201 @@
-//! Mandates: the owner's consent, signed over the hash of the exact content.
-//!
-//! On the wire a mandate is a JWS compact token ([`crate::jws`]) whose payload is a [`Mandate`].
+//! Mandate claims (PROTOCOL §8; `contracts/mandate/`). On the wire a mandate is an SD-JWT with
+//! zero disclosures ([`crate::jws`]) whose payload is a [`ClosedMandate`] or an [`OpenMandate`].
+//! Field order is the serialisation order, which the test vectors fix.
 
 use serde::{Deserialize, Serialize};
 
-use crate::evidence::Proof;
-use crate::{Level, Nonce, PeerId, Sha256, TenantId, UnixSecs};
+use crate::evidence::Channel;
+use crate::level::OpenTrust;
+use crate::{
+    EventId, KeyId, Level, MandateId, Nonce, Sha256, ShelfId, TemplateId, TenantId, ThreadId,
+    UnixSecs, V1,
+};
 
-/// A mandate payload. An unknown `kind` is a parse error.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum Mandate {
-    /// Consent for exactly one message.
-    Closed(ClosedMandate),
-    /// Consent in advance for a constrained class of messages.
-    Open(OpenMandate),
-}
-
-/// An attachment bound into a mandate by digest.
+/// Attachment metadata, bound into digests and mandates in order.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AttachmentRef {
+pub struct AttachmentMeta {
     /// File name shown to the owner.
     pub name: String,
     /// Media type shown to the owner.
     pub media_type: String,
-    /// Digest of the exact attachment bytes.
-    pub sha256: Sha256,
     /// Size in bytes.
     pub size: u64,
+    /// Digest of the exact attachment bytes.
+    pub sha256: Sha256,
+}
+
+/// `kind` of a closed mandate; any other value is a parse error.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum ClosedKind {
+    /// `"closed"`.
+    #[default]
+    #[serde(rename = "closed")]
+    Closed,
+}
+
+/// `kind` of an open mandate; any other value is a parse error.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum OpenKind {
+    /// `"open"`.
+    #[default]
+    #[serde(rename = "open")]
+    Open,
+}
+
+/// `proof` of a closed mandate.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClosedProof {
+    /// Channel that collected the consent.
+    pub channel: Channel,
+    /// Decision time.
+    pub approved_at: UnixSecs,
+    /// SHA-256 of the stored evidence bytes in the issuing gate's journal.
+    pub evidence_sha256: Sha256,
+    /// The open mandate an A0 release used.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub open_mandate: Option<MandateId>,
+    /// Publicly verifiable evidence (A3 only).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence: Option<serde_json::Map<String, serde_json::Value>>,
 }
 
 /// Consent for one message: these bytes, to this recipient, once.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClosedMandate {
-    /// Tenant whose owner consented.
+    /// Contract version.
+    pub v: V1,
+    /// Always `closed`.
+    pub kind: ClosedKind,
+    /// Sender tenant key id.
+    pub iss: KeyId,
+    /// Sender tenant (opaque to the receiver; bound into the release digest).
     pub tenant: TenantId,
-    /// The only recipient.
-    pub to: PeerId,
-    /// Digest of the exact UTF-8 text bytes the owner saw.
+    /// Recipient tenant key id.
+    pub to: KeyId,
+    /// Unique mandate id.
+    pub jti: MandateId,
+    /// Issue time.
+    pub iat: UnixSecs,
+    /// Expiry, `iat + 60`.
+    pub exp: UnixSecs,
+    /// The consumed request nonce, or a fresh one for A0.
+    pub nonce: Nonce,
+    /// Thread.
+    pub thread: ThreadId,
+    /// Event answered, if any.
+    pub in_reply_to: Option<EventId>,
+    /// SHA-256 of the exact body bytes.
     pub content_sha256: Sha256,
-    /// Attachments, in order.
-    #[serde(default)]
-    pub attachments: Vec<AttachmentRef>,
-    /// Level at which the owner approved.
+    /// Attachment metadata in order.
+    pub attachments: Vec<AttachmentMeta>,
+    /// Release digest (PROTOCOL §3.2).
+    pub release_digest: Sha256,
+    /// Level the release satisfied.
     pub level: Level,
     /// Channel proof.
-    pub proof: Proof,
-    /// Gate-issued nonce, consumed on first use.
-    pub nonce: Nonce,
-    /// Expiry, Unix seconds.
-    pub exp: UnixSecs,
+    pub proof: ClosedProof,
 }
 
-/// Message rate limit of an open mandate.
+/// Whether attachments may leave under an open mandate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Rate {
-    /// Messages allowed per window.
-    pub max_messages: u32,
-    /// Window length in seconds.
-    pub per_secs: u64,
+#[serde(rename_all = "snake_case")]
+pub enum AttachmentRule {
+    /// No attachments.
+    None,
+    /// Only documents read by the gate from an open shelf.
+    Shelf,
 }
 
-/// Hard limits of an open mandate. Absent permissions default to denied.
+/// Whether text derived from private sources may leave under an open mandate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PrivateSources {
+    /// Not allowed.
+    Deny,
+    /// Allowed.
+    Allow,
+}
+
+/// Rate limits of an open mandate. At least one is set.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct Rate {
+    /// Messages over the whole lifetime.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_messages: Option<u32>,
+    /// Messages per rolling hour.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub per_hour: Option<u32>,
+    /// Messages per rolling day.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub per_day: Option<u32>,
+}
+
+/// Hard limits of an open mandate. An absent permission is denied.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Constraints {
-    /// Allowed templates; `{name}` marks a slot. Empty means free text within the other limits.
-    #[serde(default)]
-    pub templates: Vec<String>,
-    /// Maximum text length in bytes.
-    pub max_len: u32,
-    /// Whether attachments may go out under this mandate.
-    #[serde(default)]
-    pub attachments: bool,
-    /// Whether text derived from private sources may go out under this mandate.
-    #[serde(default)]
-    pub private_sources: bool,
-    /// Rate limit.
+    /// Allowed template ids.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub templates: Vec<TemplateId>,
+    /// Maximum body length in bytes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_len: Option<u32>,
+    /// Attachment rule; absent means none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attachments: Option<AttachmentRule>,
+    /// Private-source rule; absent means deny.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub private_sources: Option<PrivateSources>,
+    /// Rate limits.
     pub rate: Rate,
-    /// Topics the owner allowed; matched by the gate's classifier.
-    #[serde(default)]
+    /// Allowed topics (T3).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub topics: Vec<String>,
+    /// Shelves open to the peer (T2).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub shelves: Vec<ShelfId>,
+    /// The one thread (conversation).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thread: Option<ThreadId>,
 }
 
-/// Consent in advance, bounded in time and by [`Constraints`].
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// `proof` of an open mandate: a human channel at A2 or higher.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OpenProof {
+    /// Channel that collected the consent.
+    pub channel: Channel,
+    /// Decision time.
+    pub approved_at: UnixSecs,
+    /// SHA-256 of the stored evidence bytes.
+    pub evidence_sha256: Sha256,
+}
+
+/// Consent in advance for a constrained class of messages. Stays in the issuing gate.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OpenMandate {
-    /// Tenant whose owner signed.
+    /// Contract version.
+    pub v: V1,
+    /// Always `open`.
+    pub kind: OpenKind,
+    /// Issuing tenant key id.
+    pub iss: KeyId,
+    /// Issuing tenant.
     pub tenant: TenantId,
-    /// The only recipient.
-    pub to: PeerId,
+    /// The only recipient's key id.
+    pub to: KeyId,
+    /// Unique mandate id.
+    pub jti: MandateId,
+    /// Issue time.
+    pub iat: UnixSecs,
+    /// Start of validity.
+    pub nbf: UnixSecs,
+    /// End of validity.
+    pub exp: UnixSecs,
+    /// Trust level this mandate grants.
+    pub trust: OpenTrust,
+    /// Level of the consent that created it; A2 or higher.
+    pub signed_at_level: Level,
     /// Hard limits.
     pub constraints: Constraints,
-    /// Start of validity, Unix seconds.
-    pub nbf: UnixSecs,
-    /// End of validity, Unix seconds.
-    pub exp: UnixSecs,
-    /// Level of the approval that signed this mandate.
-    pub signed_at_level: Level,
-    /// Channel proof of that approval.
-    pub proof: Proof,
-    /// Gate-issued nonce identifying this mandate.
-    pub nonce: Nonce,
+    /// Channel proof.
+    pub proof: OpenProof,
 }

@@ -2,7 +2,8 @@
 //!
 //! No I/O, no clock, no randomness: callers pass `now` and gate-issued nonces in. Every check
 //! here can only refuse or raise friction; nothing in this crate can approve on the owner's
-//! behalf. Signing exists only for approval channels and tests, never for the agent interface.
+//! behalf. The tenant key signs mandates and envelopes only after a decision passed
+//! [`draft::Draft::decide`] or an open mandate matched; the agent interface never reaches it.
 
 #![forbid(unsafe_code)]
 
@@ -10,12 +11,12 @@ pub mod draft;
 pub mod envelope;
 pub mod hash;
 pub mod mandate;
-pub mod nonce;
+pub mod open;
 pub mod risk;
 pub mod shelf;
+pub mod template;
 pub mod tenant;
 pub mod token;
-pub mod trust;
 
 #[cfg(test)]
 pub(crate) mod testkit;

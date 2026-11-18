@@ -1,4 +1,5 @@
-//! Identifier newtypes. Each validates its charset on construction and on deserialisation.
+//! Identifiers, key ids, nonces and digests (PROTOCOL §2). Each type validates its format on
+//! construction and on deserialisation.
 
 use std::fmt;
 
@@ -20,7 +21,7 @@ impl fmt::Display for InvalidId {
 impl std::error::Error for InvalidId {}
 
 macro_rules! string_id {
-    ($(#[$doc:meta])* $name:ident, $kind:literal, $min:literal, $max:literal, $valid:expr) => {
+    ($(#[$doc:meta])* $name:ident, $kind:literal, $valid:expr) => {
         $(#[$doc])*
         #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
         #[serde(try_from = "String", into = "String")]
@@ -30,11 +31,11 @@ macro_rules! string_id {
             /// Validates and wraps `s`.
             ///
             /// # Errors
-            /// [`InvalidId`] when `s` is empty, too long or has a forbidden character.
+            /// [`InvalidId`] when `s` does not have the format of this identifier.
             pub fn new(s: impl Into<String>) -> Result<Self, InvalidId> {
                 let s = s.into();
                 let valid: fn(&str) -> bool = $valid;
-                if s.len() < $min || s.len() > $max || !valid(&s) {
+                if !valid(&s) {
                     return Err(InvalidId { kind: $kind });
                 }
                 Ok(Self(s))
@@ -67,77 +68,119 @@ macro_rules! string_id {
     };
 }
 
-fn slug(s: &str) -> bool {
-    s.bytes()
-        .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_')
+fn crockford(b: u8) -> bool {
+    b.is_ascii_digit() || (b.is_ascii_uppercase() && !matches!(b, b'I' | b'L' | b'O' | b'U'))
 }
 
-fn b64url(s: &str) -> bool {
+fn ulid_with(prefix: &str, s: &str) -> bool {
+    s.strip_prefix(prefix)
+        .is_some_and(|rest| rest.len() == 26 && rest.bytes().all(crockford))
+}
+
+fn b64u(s: &str) -> bool {
     s.bytes()
         .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
-fn doc_path(s: &str) -> bool {
-    !s.starts_with('/')
-        && !s.ends_with('/')
-        && s.split('/')
-            .all(|seg| !seg.is_empty() && seg != "." && seg != "..")
-        && s.bytes().all(|b| {
-            b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'-' | b'_' | b'.' | b'/')
-        })
+fn handle(s: &str, max: usize) -> bool {
+    let b = s.as_bytes();
+    !b.is_empty()
+        && b.len() <= max
+        && (b[0].is_ascii_lowercase() || b[0].is_ascii_digit())
+        && b.iter()
+            .all(|&c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'-' || c == b'_')
 }
 
 string_id!(
-    /// A tenant of a (possibly multi-tenant) gate. Every stored object carries one.
+    /// Tenant id: `t_` + ULID. Gate-local and opaque.
     TenantId,
     "tenant id",
-    1,
-    64,
-    slug
+    |s| ulid_with("t_", s)
 );
 string_id!(
-    /// A paired peer as named by the local tenant.
-    PeerId,
-    "peer id",
-    1,
-    64,
-    slug
-);
-string_id!(
-    /// A remote gate: the base64url ed25519 public key of its tenant.
-    GateId,
-    "gate id",
-    43,
-    43,
-    b64url
-);
-string_id!(
-    /// An outbound draft.
+    /// Draft id: `d_` + ULID.
     DraftId,
     "draft id",
-    1,
-    64,
-    b64url
+    |s| ulid_with("d_", s)
 );
 string_id!(
-    /// A gate-issued single-use nonce, base64url of at least 16 random bytes.
-    Nonce,
-    "nonce",
-    22,
-    128,
-    b64url
+    /// Approval request id: `r_` + ULID, one per approval request of a draft revision.
+    RequestId,
+    "request id",
+    |s| ulid_with("r_", s)
 );
 string_id!(
-    /// A document on a shelf: a relative path of lowercase segments, no `.`/`..` segment.
+    /// Inbox item id: `m_` + ULID.
+    MessageId,
+    "message id",
+    |s| ulid_with("m_", s)
+);
+string_id!(
+    /// Event id: `e_` + ULID, chosen by the sending gate.
+    EventId,
+    "event id",
+    |s| ulid_with("e_", s)
+);
+string_id!(
+    /// Thread id: `th_` + ULID, chosen by the gate that opens the thread.
+    ThreadId,
+    "thread id",
+    |s| ulid_with("th_", s)
+);
+string_id!(
+    /// Mandate id (`jti`): `md_` + ULID.
+    MandateId,
+    "mandate id",
+    |s| ulid_with("md_", s)
+);
+string_id!(
+    /// Pairing message id: `p_` + ULID.
+    PairingId,
+    "pairing id",
+    |s| ulid_with("p_", s)
+);
+string_id!(
+    /// Shelf id: `sh_` + ULID.
+    ShelfId,
+    "shelf id",
+    |s| ulid_with("sh_", s)
+);
+string_id!(
+    /// Document id: `doc_` + ULID. Opaque, issued by the gate, never a path.
     DocId,
     "doc id",
-    1,
-    256,
-    doc_path
+    |s| ulid_with("doc_", s)
+);
+string_id!(
+    /// Peer handle set by the owner: `[a-z0-9][a-z0-9_-]{0,31}`.
+    PeerHandle,
+    "peer handle",
+    |s| handle(s, 32)
+);
+string_id!(
+    /// Template id: `[a-z0-9][a-z0-9_-]{0,63}`.
+    TemplateId,
+    "template id",
+    |s| handle(s, 64)
+);
+string_id!(
+    /// Key id: `ed25519:` + b64u of the 32-byte public key. A tenant's address towards peers.
+    KeyId,
+    "key id",
+    |s| s
+        .strip_prefix("ed25519:")
+        .is_some_and(|k| k.len() == 43 && b64u(k))
+);
+string_id!(
+    /// Gate-issued nonce: canonical b64u of 16 random bytes, 22 characters. Secret from the
+    /// agent.
+    Nonce,
+    "nonce",
+    |s| s.len() == 22 && b64u(s) && matches!(s.as_bytes()[21], b'A' | b'Q' | b'g' | b'w')
 );
 
 /// A SHA-256 digest; on the wire 64 lowercase hex characters.
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Sha256(pub [u8; 32]);
 
 impl Sha256 {
@@ -211,25 +254,42 @@ mod tests {
     }
 
     #[test]
-    fn doc_id_rejects_traversal_and_absolute_paths() {
-        assert!(DocId::new("projects/paseka/readme.md").is_ok());
+    fn prefixed_ulids_reject_other_prefixes_and_alphabets() {
+        assert!(DraftId::new("d_01JD0000000000000000000001").is_ok());
         for bad in [
+            "t_01JD0000000000000000000001",
+            "d_01JD000000000000000000000",
+            "d_01JD000000000000000000000I",
+            "d_01jd0000000000000000000001",
+        ] {
+            assert!(DraftId::new(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn doc_ids_are_opaque_never_paths() {
+        assert!(DocId::new("doc_01JD0000000000000000000001").is_ok());
+        for bad in [
+            "notes/a.md",
             "../etc/passwd",
-            "/etc/passwd",
-            "a/../b",
-            "a//b",
-            "a/./b",
-            "A.md",
-            "a/",
+            "doc_../../etc/passwd000000000",
         ] {
             assert!(DocId::new(bad).is_err(), "{bad}");
         }
     }
 
     #[test]
-    fn ids_validate_on_deserialisation() {
-        assert!(serde_json::from_str::<TenantId>("\"alice\"").is_ok());
-        assert!(serde_json::from_str::<TenantId>("\"Alice Smith\"").is_err());
+    fn key_ids_and_handles_validate_on_deserialisation() {
+        let k = "\"ed25519:YM6rJ7zZ2l98CigfxePpz270jIk0mSfrMRnjzMm2TXc\"";
+        assert!(serde_json::from_str::<KeyId>(k).is_ok());
+        assert!(
+            serde_json::from_str::<KeyId>("\"YM6rJ7zZ2l98CigfxePpz270jIk0mSfrMRnjzMm2TXc\"")
+                .is_err()
+        );
+        assert!(serde_json::from_str::<PeerHandle>("\"bob\"").is_ok());
+        assert!(serde_json::from_str::<PeerHandle>("\"Bob Smith\"").is_err());
+        assert!(serde_json::from_str::<Nonce>("\"AAECAwQFBgcICQoLDA0ODw\"").is_ok());
         assert!(serde_json::from_str::<Nonce>("\"short\"").is_err());
+        assert!(serde_json::from_str::<Nonce>("\"AAECAwQFBgcICQoLDA0ODx\"").is_err());
     }
 }

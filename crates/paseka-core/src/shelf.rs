@@ -1,125 +1,145 @@
-//! Shelves: collections of the owner's library opened to peers. The agent sends a pointer; the
-//! gate checks it here and then reads the bytes itself.
+//! Shelves (PROTOCOL §9.3). The agent sends a pointer; the gate checks it here and then reads
+//! the bytes itself. A doc that does not exist and a doc not open to the peer look the same.
 
 use std::collections::BTreeSet;
 
-use paseka_proto::tools::ShareArgs;
-use paseka_proto::{DocId, PeerId};
+use paseka_proto::tools::ShareInput;
+use paseka_proto::{DocId, ShelfId};
 
-use crate::risk;
-
-/// Longest agent note on a share, in characters.
-pub const MAX_NOTE_CHARS: usize = 200;
-/// Longest section name, in characters.
-pub const MAX_SECTION_CHARS: usize = 128;
-
-/// One shelf: documents under some path prefixes, open to some peers.
-#[derive(Debug, Clone, Default)]
+/// A shelf: an owner-defined collection of documents.
+#[derive(Debug, Clone)]
 pub struct Shelf {
-    /// Path prefixes, matched by whole segments.
-    pub prefixes: Vec<DocId>,
-    /// Peers the shelf is open to.
-    pub open_to: BTreeSet<PeerId>,
+    /// Shelf id.
+    pub id: ShelfId,
+    /// Documents on it.
+    pub docs: BTreeSet<DocId>,
 }
 
-/// Why a share pointer is refused.
+/// A refused share.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ShareError {
-    /// The document is on no shelf open to the recipient.
-    NotOnOpenShelf,
-    /// The note is too long or carries structural content.
+    /// `not_found`: no such doc, or not on a shelf open to the recipient.
+    NotFound,
+    /// `invalid_input`: the note breaks the note rules.
     BadNote,
-    /// The section name is too long or has control characters.
-    BadSection,
 }
 
-fn under(doc: &DocId, prefix: &DocId) -> bool {
-    let (d, p) = (doc.as_str(), prefix.as_str());
-    d == p || d.strip_prefix(p).is_some_and(|rest| rest.starts_with('/'))
+const NOTE_MIN_BLOB: usize = 16;
+const NOTE_MIN_DIGITS: usize = 6;
+
+fn runs(s: &str, pred: impl Fn(char) -> bool) -> impl Iterator<Item = &str> {
+    s.split(move |c: char| !pred(c)).filter(|r| !r.is_empty())
 }
 
-/// Checks a share pointer against `shelves`. The returned document is what the gate may read.
+/// The note rule of PROTOCOL §5.2: no URLs or e-mail addresses, no base64 or hex runs of 16 or
+/// more characters, no digit runs of 6 or more. Length and line rules are checked on input.
+pub fn note_ok(note: &str) -> bool {
+    let lower = note.to_ascii_lowercase();
+    let linky = lower.contains("://")
+        || lower.contains("www.")
+        || note.contains('@')
+        || !crate::risk::structural(note).is_empty();
+    let digits = runs(note, |c| c.is_ascii_digit()).any(|r| r.len() >= NOTE_MIN_DIGITS);
+    let blob = runs(note, |c| {
+        c.is_ascii_alphanumeric() || matches!(c, '+' | '/' | '=' | '-' | '_')
+    })
+    .filter(|r| r.len() >= NOTE_MIN_BLOB)
+    .any(|r| {
+        let digit = r.bytes().any(|b| b.is_ascii_digit());
+        let sym = r
+            .bytes()
+            .any(|b| matches!(b, b'+' | b'/' | b'=' | b'-' | b'_'));
+        let upper = r.bytes().any(|b| b.is_ascii_uppercase());
+        let lower = r.bytes().any(|b| b.is_ascii_lowercase());
+        digit || sym || (upper && lower && r.len() >= 24)
+    });
+    !(linky || digits || blob)
+}
+
+/// Checks a share against the shelves of the tenant and the shelves open to the recipient
+/// through active T2 mandates. Returns the shelf holding the doc.
 ///
 /// # Errors
-/// [`ShareError`] naming the failed check.
-pub fn check_share<'a>(shelves: &[Shelf], args: &'a ShareArgs) -> Result<&'a DocId, ShareError> {
-    let open = shelves
+/// [`ShareError`] when the doc is not shareable or the note is not allowed.
+pub fn check_share<'a>(
+    shelves: &'a [Shelf],
+    open: &BTreeSet<&ShelfId>,
+    input: &ShareInput,
+) -> Result<&'a ShelfId, ShareError> {
+    let shelf = shelves
         .iter()
-        .any(|s| s.open_to.contains(&args.to) && s.prefixes.iter().any(|p| under(&args.doc, p)));
-    if !open {
-        return Err(ShareError::NotOnOpenShelf);
+        .find(|s| open.contains(&s.id) && s.docs.contains(&input.doc))
+        .ok_or(ShareError::NotFound)?;
+    if input.note.as_deref().is_some_and(|n| !note_ok(n)) {
+        return Err(ShareError::BadNote);
     }
-    if let Some(note) = &args.note {
-        if note.chars().count() > MAX_NOTE_CHARS || !risk::structural(note).is_empty() {
-            return Err(ShareError::BadNote);
-        }
-    }
-    if let Some(section) = &args.section {
-        if section.chars().count() > MAX_SECTION_CHARS || section.chars().any(char::is_control) {
-            return Err(ShareError::BadSection);
-        }
-    }
-    Ok(&args.doc)
+    Ok(&shelf.id)
 }
 
 #[cfg(test)]
 mod tests {
+    use paseka_proto::tools::ToolCall;
+
     use super::*;
-    use crate::testkit::peer;
 
-    fn shelves() -> Vec<Shelf> {
-        vec![Shelf {
-            prefixes: vec![DocId::new("projects").unwrap()],
-            open_to: [peer("bob")].into(),
-        }]
+    fn doc(i: u8) -> DocId {
+        DocId::new(format!("doc_01JD{i:0>22}")).unwrap()
     }
 
-    fn args(to: &str, doc: &str, note: Option<&str>) -> ShareArgs {
-        ShareArgs {
-            to: peer(to),
-            doc: DocId::new(doc).unwrap(),
-            section: None,
-            note: note.map(Into::into),
+    fn shelf(i: u8) -> ShelfId {
+        ShelfId::new(format!("sh_01JD{i:0>22}")).unwrap()
+    }
+
+    fn share(d: &DocId, note: Option<&str>) -> ShareInput {
+        let mut v = serde_json::json!({"to": "bob", "doc": d.as_str()});
+        if let Some(n) = note {
+            v["note"] = n.into();
+        }
+        match ToolCall::parse("share", v.to_string().as_bytes()).unwrap() {
+            ToolCall::Share(s) => s,
+            other => panic!("{other:?}"),
         }
     }
 
     #[test]
-    fn share_is_allowed_only_on_a_shelf_open_to_that_peer() {
-        assert!(check_share(&shelves(), &args("bob", "projects/paseka.md", None)).is_ok());
+    fn only_docs_on_open_shelves_are_shareable() {
+        let shelves = [
+            Shelf {
+                id: shelf(1),
+                docs: [doc(1)].into(),
+            },
+            Shelf {
+                id: shelf(2),
+                docs: [doc(2)].into(),
+            },
+        ];
+        let s1 = shelf(1);
+        let open: BTreeSet<&ShelfId> = [&s1].into();
         assert_eq!(
-            check_share(&shelves(), &args("carol", "projects/paseka.md", None)),
-            Err(ShareError::NotOnOpenShelf)
+            check_share(&shelves, &open, &share(&doc(1), None)),
+            Ok(&shelf(1))
         );
         assert_eq!(
-            check_share(&shelves(), &args("bob", "family/notes.md", None)),
-            Err(ShareError::NotOnOpenShelf)
+            check_share(&shelves, &open, &share(&doc(2), None)),
+            Err(ShareError::NotFound)
         );
         assert_eq!(
-            check_share(&shelves(), &args("bob", "projects-private/x.md", None)),
-            Err(ShareError::NotOnOpenShelf)
+            check_share(&shelves, &open, &share(&doc(3), None)),
+            Err(ShareError::NotFound)
         );
     }
 
     #[test]
-    fn note_cannot_smuggle_links_blobs_or_length() {
-        assert!(
-            check_share(
-                &shelves(),
-                &args("bob", "projects/a.md", Some("the design notes"))
-            )
-            .is_ok()
-        );
-        for bad in ["see https://example.org/x", "4111 1111 1111 1111"] {
-            assert_eq!(
-                check_share(&shelves(), &args("bob", "projects/a.md", Some(bad))),
-                Err(ShareError::BadNote),
-                "{bad}"
-            );
+    fn notes_cannot_carry_links_blobs_or_numbers() {
+        assert!(note_ok("Section on pricing, as discussed."));
+        for bad in [
+            "see https://example.org/x",
+            "mail bob@example.org",
+            "code 123456",
+            "aGVsbG8gd29ybGQ1",
+            "deadbeef0123456789",
+        ] {
+            assert!(!note_ok(bad), "{bad}");
         }
-        let long = "a".repeat(MAX_NOTE_CHARS + 1);
-        assert_eq!(
-            check_share(&shelves(), &args("bob", "projects/a.md", Some(&long))),
-            Err(ShareError::BadNote)
-        );
     }
 }

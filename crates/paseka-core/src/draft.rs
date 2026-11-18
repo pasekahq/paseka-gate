@@ -1,138 +1,518 @@
-//! Draft lifecycle. Revising a draft voids any approval of the old text (the nonce binds the
-//! old digest) and never lowers the required level.
+//! Draft lifecycle (PROTOCOL §4.1) and approval-request checks (§7.1).
+//!
+//! Every revision gets its own approval request; a new revision, withdrawal, denial or expiry
+//! revokes it. A decision is accepted only for the live request of the current revision, with
+//! the stored release digest, through a channel strong enough for the required level.
 
-use paseka_proto::draft::{Draft, DraftState};
-use paseka_proto::{Level, Sha256};
+use paseka_proto::draft::{DraftKind, DraftState, Reason};
+use paseka_proto::evidence::{Channel, Decision};
+use paseka_proto::mandate::AttachmentMeta;
+use paseka_proto::tools::{Delivery, DraftView};
+use paseka_proto::{
+    DraftId, Level, MessageId, Nonce, PeerHandle, RequestId, Sha256, TenantId, ThreadId, UnixSecs,
+};
 
-use crate::hash::content_sha256;
-use crate::risk::{Assessment, Required};
+use crate::hash::approval_challenge;
+use crate::risk::Required;
 
-/// An illegal lifecycle step.
+/// A live or used approval request of one revision.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApprovalRequest {
+    /// Request id.
+    pub request_id: RequestId,
+    /// Revision it belongs to.
+    pub revision: u32,
+    /// Gate nonce, secret from the agent.
+    pub nonce: Nonce,
+    /// Required level.
+    pub level: Level,
+    /// Approval challenge (PROTOCOL §3.3).
+    pub challenge: Sha256,
+    /// Issue time.
+    pub issued_at: UnixSecs,
+    /// End of the prompt TTL.
+    pub expires_at: UnixSecs,
+}
+
+/// Fresh identifiers for a new approval request, drawn by the caller from the OS CSPRNG.
+#[derive(Debug, Clone)]
+pub struct RequestSeed {
+    /// Request id.
+    pub request_id: RequestId,
+    /// Nonce.
+    pub nonce: Nonce,
+}
+
+/// One revision's content.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Revision {
+    /// Body.
+    pub body: String,
+    /// Attachment metadata in order.
+    pub attachments: Vec<AttachmentMeta>,
+    /// Release digest of this revision.
+    pub release_digest: Sha256,
+    /// Whether the owner authored it.
+    pub by_owner: bool,
+}
+
+/// An outbound draft as stored by the gate.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Draft {
+    /// Owning tenant.
+    pub tenant: TenantId,
+    /// Id.
+    pub id: DraftId,
+    /// What was proposed.
+    pub kind: DraftKind,
+    /// Recipient.
+    pub to: PeerHandle,
+    /// Thread.
+    pub thread: ThreadId,
+    /// Inbox item answered.
+    pub in_reply_to: Option<MessageId>,
+    /// Current revision number, from 1.
+    pub revision: u32,
+    /// Current revision.
+    pub current: Revision,
+    /// State.
+    pub state: DraftState,
+    /// Reason of a terminal state other than `released`.
+    pub reason: Option<Reason>,
+    /// Approval request of the current revision while awaiting consent.
+    pub request: Option<ApprovalRequest>,
+    /// Creation time.
+    pub created_at: UnixSecs,
+    /// Last change.
+    pub updated_at: UnixSecs,
+}
+
+/// A refused draft operation, mapped to the agent error codes of PROTOCOL §5.3.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct IllegalTransition {
-    /// State the draft was in.
-    pub from: DraftState,
+pub enum DraftError {
+    /// `invalid_state`.
+    InvalidState(DraftState),
+    /// `revision_conflict`.
+    RevisionConflict,
 }
 
-fn ensure_open(d: &Draft) -> Result<(), IllegalTransition> {
-    if d.state.is_terminal() || d.state == DraftState::Approved {
-        return Err(IllegalTransition { from: d.state });
+/// A refused owner decision (PROTOCOL §7.1). The draft is unchanged.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DecisionError {
+    /// No live request with this id in this tenant (other tenants' ids included).
+    UnknownRequest,
+    /// The nonce does not belong to the request.
+    NonceMismatch,
+    /// The prompt TTL passed.
+    Expired,
+    /// The draft is not awaiting consent.
+    NotAwaiting,
+    /// The stored digest differs from the one recomputed or sent by the channel.
+    DigestMismatch,
+    /// The channel cannot satisfy the required level.
+    ChannelTooWeak,
+    /// The decider is not an approver of the tenant.
+    NotApprover,
+}
+
+/// An owner decision as received from an approval channel.
+#[derive(Debug, Clone, Copy)]
+pub struct DecisionAttempt<'a> {
+    /// Tenant resolved from the channel, never from a payload.
+    pub tenant: &'a TenantId,
+    /// Request id from the channel.
+    pub request_id: &'a RequestId,
+    /// Nonce from the channel.
+    pub nonce: &'a Nonce,
+    /// The channel.
+    pub channel: Channel,
+    /// Whether the decider is a configured approver of `tenant`.
+    pub approver: bool,
+    /// Release digest recomputed from the stored revision (and, for A2, sent by the page).
+    pub release_digest: Sha256,
+    /// Approve or deny.
+    pub decision: Decision,
+}
+
+/// What an accepted approval hands to mandate issuance.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Approved {
+    /// The consumed nonce.
+    pub nonce: Nonce,
+    /// Level satisfied.
+    pub level: Level,
+    /// Challenge the evidence records.
+    pub challenge: Sha256,
+    /// Release digest approved.
+    pub release_digest: Sha256,
+}
+
+/// Prompt TTL bounds and default (PROTOCOL §7.1).
+pub const PROMPT_TTL_DEFAULT: u64 = 3600;
+
+impl Draft {
+    fn open_request(&mut self, level: Level, seed: RequestSeed, now: UnixSecs, ttl: u64) {
+        let challenge = approval_challenge(
+            &self.tenant,
+            &seed.request_id,
+            self.current.release_digest,
+            &seed.nonce,
+            level,
+        );
+        self.request = Some(ApprovalRequest {
+            request_id: seed.request_id,
+            revision: self.revision,
+            nonce: seed.nonce,
+            level,
+            challenge,
+            issued_at: now,
+            expires_at: now.saturating_add(ttl),
+        });
+        self.state = DraftState::AwaitingConsent;
     }
-    Ok(())
-}
 
-/// Applies a fresh assessment: blocks, or waits for the owner at no less than the previous
-/// level of this draft.
-pub fn apply_assessment(d: &mut Draft, a: &Assessment) {
-    match a.required {
-        Required::Block => d.state = DraftState::Blocked,
-        Required::Level(l) => {
-            d.level = d.level.max(l);
-            d.state = DraftState::AwaitingApproval;
+    fn terminate(&mut self, state: DraftState, reason: Reason, now: UnixSecs) {
+        self.state = state;
+        self.reason = Some(reason);
+        self.request = None;
+        self.updated_at = now;
+    }
+
+    /// Applies the evaluation of the current revision. `strongest` is the strongest configured
+    /// channel; a requirement above it blocks (PROTOCOL §6.2). An A0 result moves to `approved`;
+    /// the caller then commits the release in the same transaction.
+    pub fn evaluated(
+        &mut self,
+        required: Required,
+        strongest: Channel,
+        seed: RequestSeed,
+        now: UnixSecs,
+        ttl: u64,
+    ) {
+        self.updated_at = now;
+        match required {
+            Required::Block => self.terminate(DraftState::Blocked, Reason::Policy, now),
+            Required::Level(Level::A0) => {
+                self.request = None;
+                self.state = DraftState::Approved;
+            }
+            Required::Level(l) if !strongest.satisfies(l) => {
+                self.terminate(DraftState::Blocked, Reason::Policy, now);
+            }
+            Required::Level(l) => self.open_request(l, seed, now, ttl),
         }
     }
-    d.flags.clone_from(&a.flags);
-}
 
-/// Replaces the text; the caller re-assesses with [`apply_assessment`].
-///
-/// # Errors
-/// [`IllegalTransition`] once the draft is approved or terminal.
-pub fn revise(d: &mut Draft, text: String) -> Result<Sha256, IllegalTransition> {
-    ensure_open(d)?;
-    d.content_sha256 = content_sha256(&text);
-    d.text = text;
-    d.revision += 1;
-    d.state = DraftState::Proposed;
-    Ok(d.content_sha256)
-}
-
-/// Marks the draft approved after a mandate for `approved_sha256` at `level` verified.
-///
-/// # Errors
-/// [`IllegalTransition`] unless the draft awaits approval with that exact digest and level.
-pub fn approve(
-    d: &mut Draft,
-    approved_sha256: Sha256,
-    level: Level,
-) -> Result<(), IllegalTransition> {
-    if d.state != DraftState::AwaitingApproval
-        || d.content_sha256 != approved_sha256
-        || level < d.level
-    {
-        return Err(IllegalTransition { from: d.state });
+    /// Agent `revise`: replaces the content and revokes the old request. The caller evaluates
+    /// the new revision and calls [`Self::evaluated`].
+    ///
+    /// # Errors
+    /// [`DraftError`] unless the draft awaits consent at revision `revision`.
+    pub fn revise(
+        &mut self,
+        revision: u32,
+        next: Revision,
+        now: UnixSecs,
+    ) -> Result<(), DraftError> {
+        if self.state != DraftState::AwaitingConsent {
+            return Err(DraftError::InvalidState(self.state));
+        }
+        if revision != self.revision {
+            return Err(DraftError::RevisionConflict);
+        }
+        self.revision += 1;
+        self.current = next;
+        self.request = None;
+        self.updated_at = now;
+        Ok(())
     }
-    d.state = DraftState::Approved;
-    Ok(())
-}
 
-/// Withdraws the draft.
-///
-/// # Errors
-/// [`IllegalTransition`] once the draft is approved or terminal.
-pub fn withdraw(d: &mut Draft) -> Result<(), IllegalTransition> {
-    ensure_open(d)?;
-    d.state = DraftState::Withdrawn;
-    Ok(())
+    /// Agent `withdraw`.
+    ///
+    /// # Errors
+    /// [`DraftError::InvalidState`] unless the draft awaits consent.
+    pub fn withdraw(&mut self, now: UnixSecs) -> Result<(), DraftError> {
+        if self.state != DraftState::AwaitingConsent {
+            return Err(DraftError::InvalidState(self.state));
+        }
+        self.terminate(DraftState::Withdrawn, Reason::Agent, now);
+        Ok(())
+    }
+
+    /// Prompt TTL or mandate expiry.
+    pub fn expire(&mut self, now: UnixSecs) {
+        let due = match self.state {
+            DraftState::AwaitingConsent => {
+                self.request.as_ref().is_none_or(|r| now >= r.expires_at)
+            }
+            DraftState::Approved => true,
+            _ => false,
+        };
+        if due {
+            self.terminate(DraftState::Expired, Reason::Timeout, now);
+        }
+    }
+
+    /// An owner decision through an approval channel. On approval the request is consumed and
+    /// the draft moves to `approved`; on denial to `denied`.
+    ///
+    /// # Errors
+    /// [`DecisionError`] when any check of PROTOCOL §7.1 fails; the draft is unchanged.
+    pub fn decide(
+        &mut self,
+        a: &DecisionAttempt<'_>,
+        now: UnixSecs,
+    ) -> Result<Option<Approved>, DecisionError> {
+        if a.tenant != &self.tenant {
+            return Err(DecisionError::UnknownRequest);
+        }
+        let Some(req) = self
+            .request
+            .as_ref()
+            .filter(|r| &r.request_id == a.request_id)
+        else {
+            return Err(DecisionError::UnknownRequest);
+        };
+        if &req.nonce != a.nonce {
+            return Err(DecisionError::NonceMismatch);
+        }
+        if now >= req.expires_at {
+            return Err(DecisionError::Expired);
+        }
+        if self.state != DraftState::AwaitingConsent || req.revision != self.revision {
+            return Err(DecisionError::NotAwaiting);
+        }
+        if a.release_digest != self.current.release_digest {
+            return Err(DecisionError::DigestMismatch);
+        }
+        if !a.channel.satisfies(req.level) {
+            return Err(DecisionError::ChannelTooWeak);
+        }
+        if !a.approver {
+            return Err(DecisionError::NotApprover);
+        }
+        let approved = Approved {
+            nonce: req.nonce.clone(),
+            level: req.level,
+            challenge: req.challenge,
+            release_digest: self.current.release_digest,
+        };
+        match a.decision {
+            Decision::Approve => {
+                self.request = None;
+                self.state = DraftState::Approved;
+                self.updated_at = now;
+                Ok(Some(approved))
+            }
+            Decision::Deny => {
+                self.terminate(DraftState::Denied, Reason::Owner, now);
+                Ok(None)
+            }
+        }
+    }
+
+    /// The agent's view: state, coarse reason and content only (SP-8). `delivery` is required
+    /// once released.
+    pub fn view(&self, delivery: Option<Delivery>) -> DraftView {
+        DraftView {
+            draft_id: self.id.clone(),
+            revision: self.revision,
+            kind: self.kind,
+            to: self.to.clone(),
+            thread: self.thread.clone(),
+            in_reply_to: self.in_reply_to.clone(),
+            state: self.state,
+            reason: self.reason,
+            body: self.current.body.clone(),
+            attachments: self.current.attachments.clone(),
+            content_sha256: crate::hash::content_sha256(&self.current.body),
+            edited_by_owner: self.current.by_owner,
+            created_at: self.created_at,
+            updated_at: self.updated_at,
+            expires_at: self.request.as_ref().map(|r| r.expires_at),
+            delivery,
+        }
+    }
+
+    /// Outbox commit of an approved draft.
+    ///
+    /// # Errors
+    /// [`DraftError::InvalidState`] unless the draft is `approved`.
+    pub fn release(&mut self, now: UnixSecs) -> Result<(), DraftError> {
+        if self.state != DraftState::Approved {
+            return Err(DraftError::InvalidState(self.state));
+        }
+        self.state = DraftState::Released;
+        self.updated_at = now;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use paseka_proto::DraftId;
-
     use super::*;
-    use crate::testkit::{peer, tenant};
+    use crate::testkit::{draft_id, nonce, peer, request_id, tenant, thread};
 
-    fn draft(text: &str) -> Draft {
-        Draft {
-            id: DraftId::new("d1").unwrap(),
-            tenant: tenant("alice"),
-            to: peer("bob"),
-            revision: 0,
-            text: text.into(),
+    fn seed(i: u8) -> RequestSeed {
+        RequestSeed {
+            request_id: request_id(i),
+            nonce: nonce(i),
+        }
+    }
+
+    fn rev(body: &str) -> Revision {
+        Revision {
+            body: body.into(),
             attachments: vec![],
-            content_sha256: content_sha256(text),
-            level: Level::A1,
-            flags: vec![],
-            state: DraftState::Proposed,
+            release_digest: crate::hash::content_sha256(body),
+            by_owner: false,
         }
     }
 
-    fn at(l: Level) -> Assessment {
-        Assessment {
-            required: Required::Level(l),
-            flags: vec![],
-        }
-    }
-
-    #[test]
-    fn revision_never_lowers_the_level_and_voids_the_old_digest() {
-        let mut d = draft("call me at https://example.org/x");
-        apply_assessment(&mut d, &at(Level::A2));
-        let old = d.content_sha256;
-        revise(&mut d, "call me".into()).unwrap();
-        apply_assessment(&mut d, &at(Level::A1));
-        assert_eq!(d.level, Level::A2);
-        let new = d.content_sha256;
-        assert!(approve(&mut d, old, Level::A2).is_err());
-        assert!(approve(&mut d, new, Level::A1).is_err());
-        assert!(approve(&mut d, new, Level::A2).is_ok());
-        assert!(revise(&mut d, "changed after approval".into()).is_err());
-    }
-
-    #[test]
-    fn blocked_draft_cannot_be_approved() {
-        let mut d = draft("x");
-        apply_assessment(
-            &mut d,
-            &Assessment {
-                required: Required::Block,
-                flags: vec![],
-            },
+    fn awaiting(level: Level) -> Draft {
+        let mut d = Draft {
+            tenant: tenant(1),
+            id: draft_id(1),
+            kind: DraftKind::FreeText,
+            to: peer("bob"),
+            thread: thread(1),
+            in_reply_to: None,
+            revision: 1,
+            current: rev("hi"),
+            state: DraftState::AwaitingConsent,
+            reason: None,
+            request: None,
+            created_at: 0,
+            updated_at: 0,
+        };
+        d.evaluated(
+            Required::Level(level),
+            Channel::TelegramMiniApp,
+            seed(1),
+            10,
+            100,
         );
-        assert_eq!(d.state, DraftState::Blocked);
-        let h = d.content_sha256;
-        assert!(approve(&mut d, h, Level::A3).is_err());
-        assert!(withdraw(&mut d).is_err());
+        d
+    }
+
+    fn attempt(d: &Draft, channel: Channel) -> DecisionAttempt<'_> {
+        let r = d.request.as_ref().unwrap();
+        DecisionAttempt {
+            tenant: &d.tenant,
+            request_id: &r.request_id,
+            nonce: &r.nonce,
+            channel,
+            approver: true,
+            release_digest: d.current.release_digest,
+            decision: Decision::Approve,
+        }
+    }
+
+    #[test]
+    fn approval_consumes_the_request_once() {
+        let snap = awaiting(Level::A1);
+        let mut d = snap.clone();
+        let a = attempt(&snap, Channel::TelegramButton);
+        assert!(d.decide(&a, 20).unwrap().is_some());
+        assert_eq!(d.state, DraftState::Approved);
+        assert_eq!(d.decide(&a, 21), Err(DecisionError::UnknownRequest));
+    }
+
+    #[test]
+    fn revise_revokes_the_old_request_and_checks_the_revision() {
+        let mut d = awaiting(Level::A1);
+        let old = d.request.clone().unwrap();
+        assert_eq!(
+            d.revise(2, rev("hi!"), 11),
+            Err(DraftError::RevisionConflict)
+        );
+        d.revise(1, rev("hi!"), 11).unwrap();
+        d.evaluated(
+            Required::Level(Level::A1),
+            Channel::TelegramMiniApp,
+            seed(2),
+            11,
+            100,
+        );
+        let snap = d.clone();
+        let a = DecisionAttempt {
+            request_id: &old.request_id,
+            nonce: &old.nonce,
+            ..attempt(&snap, Channel::TelegramButton)
+        };
+        assert_eq!(d.decide(&a, 12), Err(DecisionError::UnknownRequest));
+    }
+
+    #[test]
+    fn decisions_fail_closed_on_every_check() {
+        let d = awaiting(Level::A2);
+        let other = tenant(2);
+        let cases: [(DecisionAttempt<'_>, DecisionError); 5] = [
+            (
+                DecisionAttempt {
+                    tenant: &other,
+                    ..attempt(&d, Channel::TelegramMiniApp)
+                },
+                DecisionError::UnknownRequest,
+            ),
+            (
+                DecisionAttempt {
+                    nonce: &nonce(9),
+                    ..attempt(&d, Channel::TelegramMiniApp)
+                },
+                DecisionError::NonceMismatch,
+            ),
+            (
+                attempt(&d, Channel::TelegramButton),
+                DecisionError::ChannelTooWeak,
+            ),
+            (
+                DecisionAttempt {
+                    approver: false,
+                    ..attempt(&d, Channel::TelegramMiniApp)
+                },
+                DecisionError::NotApprover,
+            ),
+            (
+                DecisionAttempt {
+                    release_digest: Sha256([0; 32]),
+                    ..attempt(&d, Channel::TelegramMiniApp)
+                },
+                DecisionError::DigestMismatch,
+            ),
+        ];
+        for (a, want) in cases {
+            assert_eq!(d.clone().decide(&a, 20), Err(want));
+        }
+        assert_eq!(
+            d.clone()
+                .decide(&attempt(&d, Channel::TelegramMiniApp), 110),
+            Err(DecisionError::Expired)
+        );
+    }
+
+    #[test]
+    fn approved_drafts_cannot_be_revised_or_withdrawn() {
+        let snap = awaiting(Level::A1);
+        let mut d = snap.clone();
+        d.decide(&attempt(&snap, Channel::TelegramButton), 20)
+            .unwrap();
+        assert_eq!(
+            d.revise(1, rev("x"), 21),
+            Err(DraftError::InvalidState(DraftState::Approved))
+        );
+        assert_eq!(
+            d.withdraw(21),
+            Err(DraftError::InvalidState(DraftState::Approved))
+        );
+    }
+
+    #[test]
+    fn a_level_above_every_channel_blocks() {
+        let d = awaiting(Level::A2Plus);
+        assert_eq!(
+            (d.state, d.reason),
+            (DraftState::Blocked, Some(Reason::Policy))
+        );
     }
 }
