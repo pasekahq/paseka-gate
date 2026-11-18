@@ -1,0 +1,19 @@
+[package]
+name = "paseka-conformance"
+description = "Attack suite of paseka-gate: forged, stale and replayed consent, preview swap, canaries."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+paseka-proto.workspace = true
+paseka-core.workspace = true
+base64.workspace = true
+ed25519-dalek.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

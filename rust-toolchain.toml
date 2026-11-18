@@ -1,0 +1,6 @@
+# Pinned for reproducible release builds (ci/repro-build.sh). MSRV is workspace.package.rust-version.
+[toolchain]
+channel = "1.100.0"
+components = ["rustfmt", "clippy"]
+targets = ["x86_64-unknown-linux-musl"]
+profile = "minimal"
