@@ -30,20 +30,20 @@ Each item is done when the stated check passes. "CA" means a named conformance a
 | d1 | `cargo fmt --check`, `clippy -D warnings`, `cargo test`, `cargo deny check` and gitleaks pass on the tagged commit. | CI run of the tag; `python3 ci/broad_check.py` locally. |
 | d2 | Static musl binary within the size budget; idle RSS and zero idle wakeups within budget; dependency count within budget. | `ci/budgets.sh` in CI. |
 | d3 | No banned crate in the tree; no `unsafe` in proto, core, conformance. | `cargo deny check bans`; `#![forbid(unsafe_code)]` compiles. |
-| d4 | The MCP tool list and HTTP route table contain no approve-like operation, and no agent-facing call moves a draft to `approved` or `released`. | CA "approval in the agent's name"; CA "approve tool absent". |
-| d5 | A closed mandate releases exactly once, only the hashed bytes, only to its recipient, only before `exp`. | CAs: forged consent, replay, expired mandate, stale nonce, wrong recipient. |
-| d6 | Editing content after consent (by agent or by a swap between preview and send) invalidates the consent. | CA "preview swap after consent"; CA "hash mismatch after revise". |
-| d7 | A1: a button press in the consent bot yields a mandate the release check accepts; a press for another request id or nonce is rejected. | Integration test with a fake Telegram Bot API; CA "nonce from another request". |
-| d8 | A2: Mini App `initData` is accepted only with a valid Ed25519 third-party signature and a fresh `auth_date`; HMAC-only or stale data is rejected. | Unit tests with test vectors; CAs "HMAC-only initData", "stale auth_date". |
-| d9 | A0 open mandates release only within constraints (template, length, rate, window); a second open mandate for the same scope is refused while one is live. | `paseka-core` table tests; CA "open mandate outside constraints". |
-| d10 | Risk evaluation is monotonic: free text to a peer is at least A1; structural flag or dictionary hit gives A2 with highlights; a canary blocks even with valid consent and alerts the owner. | `paseka-core` property and table tests; CA "canary with approval". |
-| d11 | The agent cannot edit the dictionary, policies, peers or approvers; changes go through consent. | CA "settings change via config or agent call". |
-| d12 | T2: `share` sends shelf bytes read by the gate only when the doc is on a shelf open to that peer; the note is at most 200 characters with no links or flags. | `paseka-core` tests; CAs "share outside shelf", "note smuggling". |
-| d13 | Tenant isolation: no operation of tenant A reads, releases or lists data of tenant B. | CA "cross-tenant read/release"; core type tests. |
-| d14 | Two gates pair by deep link, exchange Ed25519 keys and deliver signed envelopes; tampered, replayed or unknown-key envelopes are rejected; delivery retries survive a restart. | Two-gate integration test on loopback; CAs "envelope replay", "forged sender". |
-| d15 | Unknown fields are ignored; an unknown enum value in a security field is rejected. | Contract fixtures in `contracts/fixtures/`; CA "unknown enum in security field". |
-| d16 | The first-run ceremony blocks all release until the owner confirms the plain-words config in the Mini App; afterwards a changed security section in the config file is refused. | Integration test of `paseka init` plus `serve`. |
-| d17 | `paseka conformance` runs the full attack suite against a local install and exits non-zero on any failure. | Run in CI against the release binary. |
+| d4 | The MCP tool list and HTTP route table contain no approve-like operation, and no agent-facing call moves a draft to `approved` or `released`. | CA-1, CA-2, CA-5, CA-24. |
+| d5 | A closed mandate releases exactly once, only the hashed bytes, only to its recipient, only before `exp`. | CA-3, CA-10, CA-12, CA-13, CA-34; core tests of `mandate::verify_received`. |
+| d6 | Editing content after consent (by agent or by a swap between preview and send) invalidates the consent. | CA-6, CA-7, CA-8, CA-9. |
+| d7 | A1: a button press in the consent bot yields a mandate the release check accepts; a press for another request id or nonce is rejected. | Integration test with a fake Telegram Bot API; CA-4, CA-10, CA-15, CA-47. |
+| d8 | A2: Mini App `initData` is accepted only with a valid Ed25519 third-party signature and a fresh `auth_date`; HMAC-only or stale data is rejected. | Unit tests with Bot API test vectors; CA-11, CA-14, CA-16, CA-17. |
+| d9 | A0 open mandates release only within constraints (template, length, rate, window); a second open mandate for the same scope is refused while one is live. | `paseka-core` `open` tests; CA-25, CA-26, CA-27, CA-28. |
+| d10 | Risk evaluation is monotonic: free text to a peer is at least A1; structural flag or dictionary hit gives A2 with highlights; a canary blocks even with valid consent and alerts the owner. | `paseka-core` `risk` tests; CA-18, CA-19, CA-20, CA-21, CA-40, CA-41. |
+| d11 | The agent cannot edit the dictionary, policies, peers or approvers; changes go through consent. | CA-23, CA-24. |
+| d12 | T2: `share` sends shelf bytes read by the gate only when the doc is on a shelf open to that peer; the note is at most 200 characters with no links or flags. | `paseka-core` `shelf` tests; CA-29, CA-30. |
+| d13 | Tenant isolation: no operation of tenant A reads, releases or lists data of tenant B. | CA-32, CA-38, CA-39; `TenantMap` tests. |
+| d14 | Two gates pair by deep link, exchange Ed25519 keys and deliver signed envelopes; tampered, replayed or unknown-key envelopes are rejected; delivery retries survive a restart. | Two-gate integration test on loopback; CA-12, CA-31, CA-33, CA-35, CA-36, CA-37, CA-46. |
+| d15 | Unknown fields are ignored; an unknown enum value in a security field is rejected. | `crates/paseka-proto/tests/contracts.rs` over `contracts/fixtures/`; proto unit tests for authority-bearing enums. |
+| d16 | The first-run ceremony blocks all release until the owner confirms the plain-words config in the Mini App; afterwards a changed security section in the config file is refused. | Integration test of `paseka init` plus `serve`; CA-23. |
+| d17 | `paseka conformance` runs the full attack suite against a local install and exits non-zero on any failure. | Run in CI against the release binary; `crates/paseka/tests/cli.rs` locally. |
 | d18 | A rebuild from the tag with `ci/repro-build.sh` reproduces the released binary hash; the release carries Sigstore provenance with a Rekor entry. | CI job rebuilding on a second runner; `cosign verify-blob-attestation`. |
 | d19 | The audit checklist answers each question with a file:line reference that exists at the tag. | CI script checking every reference resolves. |
 | d20 | An agent following `skills/install/SKILL.md` on a clean host reaches a running gate with steps 1 to 5 passed and a self-check reporting green. | Manual dry run by the owner with one agent, recorded in the release notes. |

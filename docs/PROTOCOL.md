@@ -10,8 +10,8 @@ properties SP-n and conformance attacks CA-n are defined in `docs/THREAT-MODEL.m
   input.
 - Timestamps are integer Unix seconds (JWT NumericDate). Fields end in `_at`, except JWT claims
   `iat`, `nbf`, `exp`.
-- `b64u` is base64url without padding (RFC 4648 §5). Decoders MUST reject padding and non-alphabet
-  characters.
+- `b64u` is base64url without padding (RFC 4648 §5). Decoders MUST reject padding, non-alphabet
+  characters and non-zero trailing bits.
 - `hex` is lowercase hexadecimal. SHA-256 values in JSON are 64 hex characters.
 - `frame(x)` is the 4-byte big-endian length of the byte string `x` followed by `x`. Strings are
   framed as their UTF-8 bytes. `u32be` and `u64be` are big-endian unsigned integers.
@@ -199,7 +199,7 @@ Exact shapes: `contracts/agent/*.schema.json`. Rules:
 
 A tool error is an MCP tool result with `isError: true` and structured content
 `{"error": {"code", "message", "retryable"}}` (`contracts/agent/error.schema.json`). Plain HTTP
-uses the same body with status 400, 404, 409, 413, 429 or 500.
+uses the same body with status 400, 404, 409, 413, 429, 500 or 503.
 
 | Code | Meaning | Retryable |
 |------|---------|-----------|
@@ -210,7 +210,7 @@ uses the same body with status 400, 404, 409, 413, 429 or 500.
 | `revision_conflict` | `revision` is not current | no |
 | `too_large` | body or attachment limits exceeded | no |
 | `rate_limited` | agent rate or pending limit reached | yes |
-| `unavailable` | gate is not ready (first-run ceremony pending, maintenance) | yes |
+| `unavailable` | gate is not ready (first-run ceremony pending, maintenance); HTTP 503 | yes |
 | `internal` | unexpected failure; the draft is unchanged | yes |
 
 Default limits: 30 drafts per peer per hour, 20 drafts in `awaiting_consent` per tenant.
@@ -439,7 +439,7 @@ For each `message` event the receiver MUST verify the mandate (SP-14) and reject
    attachments in order and each `sha256` matches the transmitted bytes;
 4. `thread` and `in_reply_to` equal those of the event;
 5. `release_digest` equals the digest recomputed from the mandate `tenant` and the event (§3.2);
-6. `iat <= event iat <= exp`, and `iat <= now + 300`;
+6. `iat <= event iat <= exp`, `exp - iat <= 60`, and `iat <= now + 300`;
 7. `level` and `proof.channel` are known and consistent (§6.3); with `proof.evidence` present the
    receiver verifies it;
 8. the `jti` was never accepted before from this `iss` (`mandate_replay` otherwise).

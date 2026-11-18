@@ -85,6 +85,8 @@ states who attacks what, what we assume, and which property each conformance att
 
 Each property SP-n is tested by the conformance attacks CA-n listed with it. A conformance attack
 passes when the stated outcome holds and no envelope leaves the gate unless stated otherwise.
+Attack CA-n is the entry `CA-n` of `crates/paseka-conformance` and the test `caNN_*` of the same
+number in its `tests/attacks.rs`. Numbers are stable; new attacks are appended.
 
 SP-1 No approve surface. The agent interface has no tool, parameter or field that approves,
 denies, issues mandates, or changes security settings.
@@ -142,6 +144,8 @@ without an open mandate. A canary blocks even with owner approval.
 - CA-20 Owner edits a draft in the Mini App to include a canary and approves. Result: `blocked`.
 - CA-21 Require a level with no configured channel (fingerprint hit in MVP). Result: `blocked`
   with reason `policy`, never satisfied by a weaker channel.
+- CA-47 Approve a request that requires A2 through the A1 button (a forged or replayed
+  callback included). Result: rejected; the request stays open.
 
 SP-8 No oracle. Agent-visible output never reveals the required level, detector names, matched
 spans, canaries, dictionary entries, nonces, evidence or peer keys.
