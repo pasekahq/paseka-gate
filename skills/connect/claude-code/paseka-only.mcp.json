@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "paseka": {
+      "command": "paseka",
+      "args": ["mcp", "--socket", "/run/paseka/agent.sock"]
+    }
+  }
+}

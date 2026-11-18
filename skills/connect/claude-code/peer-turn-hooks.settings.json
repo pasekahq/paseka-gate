@@ -1,0 +1,21 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "mcp__paseka__read|mcp__paseka__inbox",
+        "hooks": [{ "type": "command", "command": "~/.config/paseka/claude/peer-turn-guard.sh mark" }]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [{ "type": "command", "command": "~/.config/paseka/claude/peer-turn-guard.sh check" }]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [{ "type": "command", "command": "~/.config/paseka/claude/peer-turn-guard.sh clear" }]
+      }
+    ]
+  }
+}
