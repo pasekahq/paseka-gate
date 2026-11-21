@@ -61,14 +61,19 @@ states who attacks what, what we assume, and which property each conformance att
   not what the peer does with it.
 - A-9 Only the owner knows the owner's PIN or password (PROTOCOL §7.5). It protects A2+
   decisions against a stolen Telegram session and an unlocked phone with Telegram open: such an
-  attacker reaches A1 and A2, not A2+. It does not protect against HO, who serves the Mini App
-  code and terminates its TLS and so can read the PIN as entered, nor against malware on the
-  owner's device. The attempt limit (5 wrong entries in a row freeze entry for 15 minutes) guards
-  online entry through the Mini App only: about 480 guesses a day, so half of the 6-digit space
-  takes about three years. An attacker holding the stored verifiers guesses offline at the cost
-  of Argon2id alone, which a 6-digit PIN does not withstand; a password raises that cost. Whoever
-  can open the Mini App as the owner can also keep PIN entry frozen; each freeze notice tells the
-  owner that someone else is entering PINs.
+  attacker reaches A1 and A2, not A2+. It does not protect against malware on the owner's
+  device. The attempt limit (5 wrong entries in a row freeze entry for 15 minutes) protects only
+  PIN entry through the Mini App: about 480 guesses a day, so half of the 6-digit space takes
+  about three years. It does nothing against an attacker who holds the stored verifiers, most
+  plausibly from a hosted gate's database or one of its backups: 6 digits are 10^6 candidates,
+  which are guessed offline even with Argon2id. The tenant's pepper, kept outside the database,
+  defeats that guessing only while it does not leak with the database. When both leak, the
+  password that hosted tenants get by default raises the cost of guessing; a 6-digit PIN does not
+  withstand it. Neither the pepper nor the password default protects against HO, who holds both
+  the database and the pepper on its own hosting, and who also serves the Mini App code and
+  terminates its TLS and so can read the PIN as entered. Whoever can open the Mini App as the
+  owner can also keep PIN entry frozen; each freeze notice tells the owner that someone else is
+  entering PINs.
 
 ## 5. Attacker goals
 
@@ -290,8 +295,8 @@ CA-22 and CA-41.
 - Out-of-band exfiltration by the agent's own tools (web fetch, mail, shell with network,
   messengers). Handled by agent configuration guidance L1 to L3, not by the gate.
 - A malicious hosting operator for hosted tenants. Hosted tenants trust HO explicitly; the
-  mitigations are verification and migration paths, not cryptographic isolation from HO. The PIN
-  gives no protection against HO either (A-9).
+  mitigations are verification and migration paths, not cryptographic isolation from HO. The PIN,
+  its pepper and the hosted password default give no protection against HO either (A-9).
 - Telegram itself: its servers, clients and the security of the owner's Telegram account (A-3).
 - Compromise of the owner's devices, or of the gate host for self-host.
 - What a peer does with content after delivery (A-8).

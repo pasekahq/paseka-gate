@@ -1,5 +1,6 @@
-//! PIN rules of the A2+ channel (PROTOCOL §7.5): the PIN kind setting and the online attempt
-//! limit. The verifier itself belongs to the gate; nothing here holds or derives a secret.
+//! PIN rules of the A2+ channel (PROTOCOL §7.5): the PIN kind setting, its default by
+//! deployment and the online attempt limit. The verifier and its pepper belong to the gate;
+//! nothing here holds or derives a secret.
 
 use paseka_proto::{TenantId, UnixSecs};
 
@@ -14,11 +15,19 @@ pub const PIN_DIGITS: usize = 6;
 /// Minimum length in Unicode scalar values of a secret of kind [`PinKind::Password`].
 pub const PASSWORD_MIN_CHARS: usize = 12;
 
+/// Who runs the gate that holds a tenant's PIN verifier and pepper.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Deployment {
+    /// The tenant's owner runs the gate.
+    SelfHost,
+    /// A hosting operator runs the gate for the tenant.
+    Hosted,
+}
+
 /// What the owner's A2+ secret is: a security setting that holds no secret itself.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PinKind {
     /// Exactly [`PIN_DIGITS`] ASCII digits.
-    #[default]
     SixDigits,
     /// At least [`PASSWORD_MIN_CHARS`] characters, none of them a control character.
     Password,
@@ -36,6 +45,15 @@ pub enum BadPin {
 }
 
 impl PinKind {
+    /// The kind a tenant starts with: a password when hosted, six digits on self-host.
+    #[must_use]
+    pub const fn default_for(deployment: Deployment) -> Self {
+        match deployment {
+            Deployment::SelfHost => Self::SixDigits,
+            Deployment::Hosted => Self::Password,
+        }
+    }
+
     /// Checks a new PIN or password against this kind before the gate stores its verifier.
     ///
     /// # Errors
@@ -154,7 +172,15 @@ mod tests {
         for (kind, candidate, want) in cases {
             assert_eq!(kind.check(candidate), want, "{kind:?} {candidate:?}");
         }
-        assert_eq!(PinKind::default(), PinKind::SixDigits);
+    }
+
+    #[test]
+    fn hosted_tenants_default_to_a_password() {
+        assert_eq!(PinKind::default_for(Deployment::Hosted), PinKind::Password);
+        assert_eq!(
+            PinKind::default_for(Deployment::SelfHost),
+            PinKind::SixDigits
+        );
     }
 
     /// One step of a limiter script: time, whether the PIN is right, expected outcome, and
