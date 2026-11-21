@@ -14,7 +14,7 @@ publish = false
 paseka-proto = { path = "crates/paseka-proto" }
 paseka-core = { path = "crates/paseka-core" }
 paseka-conformance = { path = "crates/paseka-conformance" }
-base64 = { version = "0.22", default-features = false, features = ["std"] }
+base64 = { version = "0.23", default-features = false, features = ["std"] }
 ed25519-dalek = { version = "2", default-features = false, features = ["std", "fast"] }
 serde = { version = "1", default-features = false, features = ["std", "derive"] }
 serde_json = { version = "1", default-features = false, features = ["std"] }
