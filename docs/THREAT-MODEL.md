@@ -106,6 +106,21 @@ passes when the stated outcome holds and no envelope leaves the gate unless stat
 Attack CA-n is the entry `CA-n` of `crates/paseka-conformance` and the test `caNN_*` of the same
 number in its `tests/attacks.rs`. Numbers are stable; new attacks are appended.
 
+Of the 57 attacks CA-1 to CA-57, 44 run and pass in `paseka conformance` and in
+`crates/paseka-conformance/tests/attacks.rs`. 13 are Pending: `paseka conformance` reports them
+with the part they need, and `tests/attacks.rs` ignores them with that part as the reason. The
+milestone is the one of `docs/MVP.md` that builds the part for the attack.
+
+| Missing part | Pending attacks | Milestone |
+|---|---|---|
+| the gate daemon (`paseka serve`) | CA-5, CA-38 | M2 |
+| | CA-23 | M3 |
+| | CA-44, CA-46 | M4 |
+| the journal | CA-45 | M2 |
+| the consent bot and Mini App | CA-4, CA-11, CA-14, CA-16, CA-17 | M3 |
+| invite codes (PROTOCOL §11) | CA-35 | M4 |
+| an installed gate (install skill) | CA-42 | M5 |
+
 SP-1 No approve surface. The agent interface has no tool, parameter or field that approves,
 denies, issues mandates, or changes security settings.
 - CA-1 List the agent tools (MCP `tools/list` and the HTTP surface). Only the tools of
