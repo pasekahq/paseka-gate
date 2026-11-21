@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://pasekahq.example.org/contracts/v1/pairing/accept.schema.json",
-  "title": "pair.accept payload (JWS typ paseka-pair+jwt, signed by the inviter key)",
+  "title": "pair.accept payload (JWS typ paseka-pair+jwt, signed by the inviter key named in key)",
   "type": "object",
   "required": [
     "v",
@@ -9,6 +9,7 @@
     "id",
     "iss",
     "aud",
+    "key",
     "request_id",
     "request_sha256",
     "endpoint",
@@ -25,10 +26,14 @@
       "$ref": "../common.schema.json#/$defs/pairing_id"
     },
     "iss": {
-      "$ref": "../common.schema.json#/$defs/key_id"
+      "$ref": "../common.schema.json#/$defs/address"
     },
     "aud": {
-      "$ref": "../common.schema.json#/$defs/key_id"
+      "$ref": "../common.schema.json#/$defs/address"
+    },
+    "key": {
+      "$ref": "../common.schema.json#/$defs/key_id",
+      "description": "Inviter key, pinned by the invitee for iss; equals k of the pair URI."
     },
     "request_id": {
       "$ref": "../common.schema.json#/$defs/pairing_id"

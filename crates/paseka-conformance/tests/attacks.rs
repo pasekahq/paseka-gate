@@ -195,7 +195,7 @@ fn ca34_mandate_mismatch() {
 }
 
 #[test]
-#[ignore = "needs pairing"]
+#[ignore = "needs invite codes"]
 fn ca35_used_expired_invite_code() {
     check("CA-35");
 }
@@ -206,7 +206,6 @@ fn ca36_pairing_pending() {
 }
 
 #[test]
-#[ignore = "needs pairing"]
 fn ca37_pair_accept_signed_key_other() {
     check("CA-37");
 }

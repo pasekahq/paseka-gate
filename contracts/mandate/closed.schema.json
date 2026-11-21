@@ -29,13 +29,13 @@
       "const": "closed"
     },
     "iss": {
-      "$ref": "../common.schema.json#/$defs/key_id"
+      "$ref": "../common.schema.json#/$defs/address"
     },
     "tenant": {
       "$ref": "../common.schema.json#/$defs/tenant_id"
     },
     "to": {
-      "$ref": "../common.schema.json#/$defs/key_id"
+      "$ref": "../common.schema.json#/$defs/address"
     },
     "jti": {
       "$ref": "../common.schema.json#/$defs/mandate_id"

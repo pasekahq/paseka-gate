@@ -1,7 +1,7 @@
 //! Deterministic fixtures for unit tests.
 
 use ed25519_dalek::SigningKey;
-use paseka_proto::{DraftId, KeyId, Nonce, PeerHandle, RequestId, TenantId, ThreadId};
+use paseka_proto::{Address, DraftId, Nonce, PeerHandle, RequestId, TenantId, ThreadId};
 
 fn ulid(prefix: &str, i: u8) -> String {
     format!("{prefix}01JD{i:0>22}")
@@ -9,6 +9,10 @@ fn ulid(prefix: &str, i: u8) -> String {
 
 pub(crate) fn tenant(i: u8) -> TenantId {
     TenantId::new(ulid("t_", i)).unwrap()
+}
+
+pub(crate) fn address(i: u8) -> Address {
+    tenant(i).address()
 }
 
 pub(crate) fn draft_id(i: u8) -> DraftId {
@@ -33,8 +37,4 @@ pub(crate) fn nonce(i: u8) -> Nonce {
 
 pub(crate) fn key(seed: u8) -> SigningKey {
     SigningKey::from_bytes(&[seed; 32])
-}
-
-pub(crate) fn kid(seed: u8) -> KeyId {
-    crate::token::key_id(&key(seed).verifying_key())
 }

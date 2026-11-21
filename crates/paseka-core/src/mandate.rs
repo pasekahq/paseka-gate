@@ -5,7 +5,7 @@ use ed25519_dalek::{SigningKey, VerifyingKey};
 use paseka_proto::envelope::{Envelope, MessageData};
 use paseka_proto::evidence::Channel;
 use paseka_proto::mandate::ClosedMandate;
-use paseka_proto::{KeyId, Level, MandateId, UnixSecs};
+use paseka_proto::{Address, Level, MandateId, TenantId, UnixSecs};
 
 use crate::hash::{Release, content_sha256, release_digest, sha256};
 use crate::tenant::TenantMap;
@@ -26,7 +26,7 @@ pub enum MandateInvalid {
     Token(TokenError),
     /// Payload is not a closed mandate.
     Payload,
-    /// `iss` or `to` differ from the envelope.
+    /// `iss` or `to` differ from the envelope, or `tenant` is not the `iss` address.
     Addressing,
     /// Body or attachments differ from what the mandate covers.
     Content,
@@ -71,20 +71,20 @@ pub fn issue(key: &SigningKey, m: &ClosedMandate) -> String {
     token::sign_mandate(key, &payload)
 }
 
-/// Mandate ids accepted per receiving tenant and sender, kept until they expire.
+/// Mandate ids accepted per receiving tenant and sender address, kept until they expire.
 #[derive(Debug, Clone, Default)]
 pub struct JtiBook {
-    seen: TenantMap<(KeyId, MandateId), UnixSecs>,
+    seen: TenantMap<(Address, MandateId), UnixSecs>,
 }
 
 impl JtiBook {
     /// Whether `jti` from `iss` was accepted before by `tenant`.
-    pub fn seen(&self, tenant: &paseka_proto::TenantId, iss: &KeyId, jti: &MandateId) -> bool {
+    pub fn seen(&self, tenant: &TenantId, iss: &Address, jti: &MandateId) -> bool {
         self.seen.get(tenant, &(iss.clone(), jti.clone())).is_some()
     }
 
     /// Records an accepted mandate.
-    pub fn record(&mut self, tenant: &paseka_proto::TenantId, m: &ClosedMandate) {
+    pub fn record(&mut self, tenant: &TenantId, m: &ClosedMandate) {
         self.seen
             .insert(tenant, (m.iss.clone(), m.jti.clone()), m.exp);
     }
@@ -96,23 +96,23 @@ impl JtiBook {
     }
 }
 
-/// Verifies the mandate of a received `message` event (PROTOCOL §8.4). The caller records the
-/// returned mandate in the [`JtiBook`] in the same transaction as the inbox item.
+/// Verifies the mandate of a received `message` event (PROTOCOL §8.4); `sender` is the key
+/// recorded for the envelope `iss`. The caller records the returned mandate in the [`JtiBook`]
+/// in the same transaction as the inbox item.
 ///
 /// # Errors
 /// [`MandateInvalid`] for the first failed check.
 pub fn verify_received(
     env: &Envelope<MessageData>,
     sender: &VerifyingKey,
-    receiver_tenant: &paseka_proto::TenantId,
+    receiver_tenant: &TenantId,
     jtis: &JtiBook,
     now: UnixSecs,
 ) -> Result<ClosedMandate, MandateInvalid> {
     let d = &env.data;
-    let payload =
-        token::verify_mandate(&d.mandate, &env.iss, sender).map_err(MandateInvalid::Token)?;
+    let payload = token::verify_mandate(&d.mandate, sender).map_err(MandateInvalid::Token)?;
     let m: ClosedMandate = serde_json::from_slice(&payload).map_err(|_| MandateInvalid::Payload)?;
-    if m.iss != env.iss || m.to != env.aud {
+    if m.iss != env.iss || m.to != env.aud || m.tenant.address() != m.iss {
         return Err(MandateInvalid::Addressing);
     }
     let bytes_match = d.attachments.iter().all(|a| {
@@ -189,7 +189,7 @@ mod tests {
         );
         let env: Envelope<MessageData> =
             serde_json::from_value(signed["envelope"]["payload"].clone()).unwrap();
-        let bob_tenant = paseka_proto::TenantId::new("t_01JD0000000000000000000002").unwrap();
+        let bob_tenant = TenantId::new("t_01JD0000000000000000000002").unwrap();
         let now = claims.iat + 1;
         let mut jtis = JtiBook::default();
         let m = verify_received(&env, &alice.verifying_key(), &bob_tenant, &jtis, now).unwrap();
@@ -197,6 +197,39 @@ mod tests {
         assert_eq!(
             verify_received(&env, &alice.verifying_key(), &bob_tenant, &jtis, now),
             Err(MandateInvalid::Replay)
+        );
+    }
+
+    #[test]
+    fn a_mandate_whose_tenant_is_not_its_issuer_address_is_refused() {
+        let v = vectors();
+        let signed = &v["signed"];
+        let mut m: ClosedMandate =
+            serde_json::from_value(signed["closed_mandate"]["claims"].clone()).unwrap();
+        let mut env: Envelope<MessageData> =
+            serde_json::from_value(signed["envelope"]["payload"].clone()).unwrap();
+        m.tenant = TenantId::new("t_01JD0000000000000000000003").unwrap();
+        m.release_digest = release_digest(&Release {
+            tenant: &m.tenant,
+            iss: &m.iss,
+            to: &m.to,
+            thread: &m.thread,
+            in_reply_to: m.in_reply_to.as_ref(),
+            content_sha256: m.content_sha256,
+            attachments: &m.attachments,
+        });
+        let alice = seed_key(&v, "alice");
+        env.data.mandate = issue(&alice, &m);
+        let bob_tenant = TenantId::new("t_01JD0000000000000000000002").unwrap();
+        assert_eq!(
+            verify_received(
+                &env,
+                &alice.verifying_key(),
+                &bob_tenant,
+                &JtiBook::default(),
+                m.iat + 1
+            ),
+            Err(MandateInvalid::Addressing)
         );
     }
 }

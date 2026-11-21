@@ -1,5 +1,5 @@
-//! Identifiers, key ids, nonces and digests (PROTOCOL §2). Each type validates its format on
-//! construction and on deserialisation.
+//! Identifiers, addresses, key ids, nonces and digests (PROTOCOL §2). Each type validates its
+//! format on construction and on deserialisation.
 
 use std::fmt;
 
@@ -92,9 +92,17 @@ fn handle(s: &str, max: usize) -> bool {
 }
 
 string_id!(
-    /// Tenant id: `t_` + ULID. Gate-local and opaque.
+    /// Tenant id: `t_` + ULID. Global and permanent; [`TenantId::address`] names the tenant to
+    /// peers.
     TenantId,
     "tenant id",
+    |s| ulid_with("t_", s)
+);
+string_id!(
+    /// A tenant's address towards peers: its permanent tenant id, `t_` + ULID. Never a key id;
+    /// the key bound to an address is a separate record.
+    Address,
+    "address",
     |s| ulid_with("t_", s)
 );
 string_id!(
@@ -164,7 +172,7 @@ string_id!(
     |s| handle(s, 64)
 );
 string_id!(
-    /// Key id: `ed25519:` + b64u of the 32-byte public key. A tenant's address towards peers.
+    /// Key id: `ed25519:` + b64u of the 32-byte public key. Names a key, never a tenant.
     KeyId,
     "key id",
     |s| s
@@ -178,6 +186,13 @@ string_id!(
     "nonce",
     |s| s.len() == 22 && b64u(s) && matches!(s.as_bytes()[21], b'A' | b'Q' | b'g' | b'w')
 );
+
+impl TenantId {
+    /// The tenant's address towards peers.
+    pub fn address(&self) -> Address {
+        Address(self.0.clone())
+    }
+}
 
 /// A SHA-256 digest; on the wire 64 lowercase hex characters.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -276,6 +291,16 @@ mod tests {
         ] {
             assert!(DocId::new(bad).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn an_address_is_a_tenant_id_and_never_a_key_id() {
+        let t = TenantId::new("t_01JD0000000000000000000001").unwrap();
+        let a: Address = serde_json::from_str("\"t_01JD0000000000000000000001\"").unwrap();
+        assert_eq!(t.address(), a);
+        let k = "\"ed25519:YM6rJ7zZ2l98CigfxePpz270jIk0mSfrMRnjzMm2TXc\"";
+        assert!(serde_json::from_str::<Address>(k).is_err());
+        assert!(serde_json::from_str::<KeyId>("\"t_01JD0000000000000000000001\"").is_err());
     }
 
     #[test]

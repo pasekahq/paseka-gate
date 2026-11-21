@@ -14,8 +14,8 @@ use paseka_proto::envelope::{Envelope, EventType, MessageData, WireAttachment};
 use paseka_proto::evidence::{Channel, Decision};
 use paseka_proto::mandate::{AttachmentMeta, ClosedKind, ClosedMandate, ClosedProof};
 use paseka_proto::{
-    DraftId, EventId, KeyId, Level, MandateId, Nonce, PeerHandle, RequestId, Sha256, TenantId,
-    ThreadId, UnixSecs, V1,
+    Address, DraftId, EventId, KeyId, Level, MandateId, Nonce, PairingId, PeerHandle, RequestId,
+    Sha256, TenantId, ThreadId, UnixSecs, V1,
 };
 
 pub(crate) const NOW: UnixSecs = 1_794_268_830;
@@ -28,6 +28,10 @@ fn ulid(prefix: &str, i: u8) -> String {
 
 pub(crate) fn tenant(i: u8) -> TenantId {
     TenantId::new(ulid("t_", i)).expect("fixture id")
+}
+
+pub(crate) fn address(i: u8) -> Address {
+    tenant(i).address()
 }
 
 pub(crate) fn request_id(i: u8) -> RequestId {
@@ -44,6 +48,10 @@ pub(crate) fn event(i: u8) -> EventId {
 
 pub(crate) fn jti(i: u8) -> MandateId {
     MandateId::new(ulid("md_", i)).expect("fixture id")
+}
+
+pub(crate) fn pairing_id(i: u8) -> PairingId {
+    PairingId::new(ulid("p_", i)).expect("fixture id")
 }
 
 pub(crate) fn nonce(i: u8) -> Nonce {
@@ -70,8 +78,8 @@ pub(crate) fn revision(body: &str, attachments: Vec<AttachmentMeta>) -> Revision
         body: body.into(),
         release_digest: release_digest(&Release {
             tenant: &tenant(1),
-            iss: &kid(&key(1)),
-            to: &kid(&key(2)),
+            iss: &address(1),
+            to: &address(2),
             thread: &thread(1),
             in_reply_to: None,
             content_sha256: content_sha256(body),
@@ -125,10 +133,15 @@ pub(crate) struct Wire {
 
 impl Wire {
     pub(crate) fn new() -> Self {
-        let (alice, bob) = (key(1), key(2));
+        let alice = key(1);
         let mut recv = Receiver::default();
-        recv.add_tenant(kid(&bob), tenant(2));
-        recv.set_peer(&tenant(2), alice.verifying_key(), PeerState::Active);
+        recv.add_tenant(tenant(2));
+        recv.set_peer(
+            &tenant(2),
+            address(1),
+            alice.verifying_key(),
+            PeerState::Active,
+        );
         Self { recv, alice }
     }
 }
@@ -147,7 +160,7 @@ pub(crate) fn attachment(name: &str, bytes: &[u8]) -> WireAttachment {
 
 /// The closed mandate alice's gate issues for `data` sent to bob.
 pub(crate) fn mandate_for(data: &MessageData, i: u8) -> ClosedMandate {
-    let (alice, bob) = (kid(&key(1)), kid(&key(2)));
+    let (alice, bob) = (address(1), address(2));
     let attachments: Vec<AttachmentMeta> =
         data.attachments.iter().map(|a| a.meta.clone()).collect();
     let content = content_sha256(&data.body);
@@ -204,8 +217,8 @@ pub(crate) fn message(
     data.mandate = mandate::issue(&key(1), &m);
     Envelope {
         v: V1,
-        iss: kid(&key(1)),
-        aud: kid(&key(2)),
+        iss: address(1),
+        aud: address(2),
         id: event(id),
         kind: EventType::Message,
         iat: NOW,

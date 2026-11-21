@@ -2,7 +2,7 @@ use paseka_proto::mandate::{Constraints, OpenKind, OpenProof, Rate};
 use paseka_proto::{Sha256, V1};
 
 use super::*;
-use crate::testkit::{kid, tenant, thread};
+use crate::testkit::{address, tenant, thread};
 
 fn tpl(s: &str) -> TemplateId {
     TemplateId::new(s).unwrap()
@@ -16,9 +16,9 @@ fn t1(i: u8) -> OpenMandate {
     OpenMandate {
         v: V1,
         kind: OpenKind::Open,
-        iss: kid(1),
+        iss: address(1),
         tenant: tenant(1),
-        to: kid(2),
+        to: address(2),
         jti: jti(i),
         iat: 0,
         nbf: 0,
@@ -47,7 +47,7 @@ fn t1(i: u8) -> OpenMandate {
     }
 }
 
-fn cand<'a>(to: &'a KeyId, t: &'a TemplateId, th: &'a ThreadId) -> Candidate<'a> {
+fn cand<'a>(to: &'a Address, t: &'a TemplateId, th: &'a ThreadId) -> Candidate<'a> {
     Candidate {
         to,
         kind: DraftKind::Template,
@@ -79,7 +79,7 @@ fn shape_rules_reject_weak_signers_and_missing_constraints() {
 
 #[test]
 fn matching_needs_activation_and_stops_at_the_rate() {
-    let (m, to, t, th) = (t1(1), kid(2), tpl("availability"), thread(1));
+    let (m, to, t, th) = (t1(1), address(2), tpl("availability"), thread(1));
     let mut book = OpenBook::default();
     assert_eq!(
         book.matches(&m, &cand(&to, &t, &th), false, 10),
@@ -107,7 +107,7 @@ fn matching_needs_activation_and_stops_at_the_rate() {
 
 #[test]
 fn revocation_takes_effect_at_once() {
-    let (m, to, t, th) = (t1(1), kid(2), tpl("availability"), thread(1));
+    let (m, to, t, th) = (t1(1), address(2), tpl("availability"), thread(1));
     let mut book = OpenBook::default();
     book.present(&m, 5).unwrap();
     book.activate(&m).unwrap();

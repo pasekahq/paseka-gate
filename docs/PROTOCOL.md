@@ -21,7 +21,7 @@ properties SP-n and conformance attacks CA-n are defined in `docs/THREAT-MODEL.m
 
 | Name | Format | Scope |
 |------|--------|-------|
-| tenant id | `t_` + 26 Crockford base32 (ULID) | gate-local, opaque |
+| tenant id, address | `t_` + 26 Crockford base32 (ULID) | global, permanent |
 | draft id | `d_` + ULID | gate-local |
 | request id | `r_` + ULID (one per approval request of a draft revision) | gate-local |
 | message id | `m_` + ULID (an inbox item) | gate-local |
@@ -35,9 +35,15 @@ properties SP-n and conformance attacks CA-n are defined in `docs/THREAT-MODEL.m
 
 ULIDs MUST carry 80 random bits from the OS CSPRNG, so ids never collide across tenants.
 
-Each tenant has exactly one Ed25519 identity key. The key id is the tenant's address towards
-peers. The same key signs envelopes, receipts, pairing messages and mandates; the JWS `typ`
-header separates the domains (§8.1). The private key MUST be readable only by the gate's unix
+The tenant id is the tenant's address towards peers. It never changes, is never derived from a
+key, and stays the same across key rotation and migration. Every field that names a tenant
+towards a peer (`iss`, `aud`, `to`) holds an address.
+
+Each tenant has exactly one current Ed25519 identity key. Key ids appear only in JWS `kid` and in
+fields that name a key (`key` in pairing messages, `k` in the pair URI). A peer record holds the
+peer's address, endpoint and current key; key rotation and revocation follow ADR 0013. The same
+key signs envelopes, receipts, pairing messages and mandates; the JWS `typ` header separates the
+domains (§8.1). The private key MUST be readable only by the gate's unix
 user and MUST NOT be exported through any interface.
 
 ## 3. Content and digests
@@ -68,8 +74,8 @@ release_digest = SHA-256(
 )
 ```
 
-`iss` and `to` are the key ids of the sending and receiving tenant. `in_reply_to` is an event id
-or empty. Implementations MUST pass the vectors in `contracts/fixtures/vectors/digests.json`.
+`tenant` is the sending tenant; `iss` and `to` are the addresses of the sending and receiving
+tenant, so `iss` equals `tenant`. `in_reply_to` is an event id or empty. Implementations MUST pass the vectors in `contracts/fixtures/vectors/digests.json`.
 
 ### 3.3 Approval challenge
 
@@ -383,8 +389,9 @@ A mandate is an SD-JWT with zero disclosures: a compact JWS followed by `~`
 | `paseka-pair+jwt` | pairing message (§11) |
 
 Verifiers MUST: accept only `alg` `EdDSA` with an Ed25519 key; reject `crit`, `jwk`, `jku`,
-`x5u`, `x5c`; take the key only from local state (own key or a paired peer key), never from the
-token; require `kid` equal to the expected key id and `typ` equal to the expected type; reject
+`x5u`, `x5c`; take the key only from local state (own key or the key recorded for a paired peer's
+address), never from the token; require `kid` to name that key and `typ` equal to the expected
+type; reject
 any disclosure after the `~` and any `_sd` claim in version 1; verify the signature over the
 exact received ASCII of `<header>.<payload>`.
 
@@ -399,8 +406,8 @@ with Telegram's attestation as evidence; from A2+ the owner's own key signs the 
 
 ### 8.2 Closed mandate
 
-Claims (`contracts/mandate/closed.schema.json`): `v`, `kind: "closed"`, `iss` (sender key id),
-`tenant`, `to` (recipient key id), `jti`, `iat`, `exp`, `nonce`, `thread`, `in_reply_to`,
+Claims (`contracts/mandate/closed.schema.json`): `v`, `kind: "closed"`, `iss` (sender address,
+equal to `tenant`), `tenant`, `to` (recipient address), `jti`, `iat`, `exp`, `nonce`, `thread`, `in_reply_to`,
 `content_sha256`, `attachments` (metadata in order), `release_digest`, `level`, `proof`
 (`channel`, `approved_at`, `evidence_sha256`, optional `open_mandate` (jti of the open mandate
 for A0), optional `evidence` (publicly verifiable evidence, A3 only)).
@@ -435,8 +442,10 @@ Rules:
 For each `message` event the receiver MUST verify the mandate (SP-14) and reject the event with
 `mandate_invalid` unless all hold:
 
-1. §8.1 checks with `typ` `paseka-mandate+sd-jwt` and `kid` equal to the envelope `iss`;
-2. `kind` is `closed`; `iss` equals the envelope `iss`; `to` equals the envelope `aud`;
+1. §8.1 checks with `typ` `paseka-mandate+sd-jwt` and `kid` naming the key recorded for the
+   envelope `iss`;
+2. `kind` is `closed`; `iss` equals the envelope `iss` and `tenant`; `to` equals the envelope
+   `aud`;
 3. `content_sha256` equals SHA-256 of the event body; `attachments` metadata equals the event
    attachments in order and each `sha256` matches the transmitted bytes;
 4. `thread` and `in_reply_to` equal those of the event;
@@ -444,7 +453,7 @@ For each `message` event the receiver MUST verify the mandate (SP-14) and reject
 6. `iat <= event iat <= exp`, `exp - iat <= 60`, and `iat <= now + 300`;
 7. `level` and `proof.channel` are known and consistent (§6.3); with `proof.evidence` present the
    receiver verifies it;
-8. the `jti` was never accepted before from this `iss` (`mandate_replay` otherwise).
+8. the `jti` was never accepted before from this `iss` address (`mandate_replay` otherwise).
 
 The receiver shows the sender's level and channel with the inbox item.
 
@@ -507,8 +516,8 @@ Each tenant has an endpoint URL `https://<host>/<path>` (TLS terminated by Caddy
 ### 10.2 Envelope
 
 The envelope is a JWS with `typ` `paseka-envelope+jwt`, signed by the sender's tenant key.
-Payload (`contracts/wire/envelope.schema.json`): `v`, `iss` (sender key id), `aud` (recipient key
-id), `id` (event id), `type`, `iat` (event creation time), `data` (per type).
+Payload (`contracts/wire/envelope.schema.json`): `v`, `iss` (sender address), `aud` (recipient
+address), `id` (event id), `type`, `iat` (event creation time), `data` (per type).
 
 | type | data |
 |------|------|
@@ -524,9 +533,10 @@ bytes. `envelope_sha256` is SHA-256 of the compact JWS ASCII bytes.
 In order; the first failure determines the error:
 
 1. size limit, JWS syntax, header per §8.1 (`malformed`, `too_large`);
-2. `aud` names a tenant of this gate and `iss` is an active paired peer of that tenant
-   (`not_paired`; the same response for an unknown tenant); `kid` equals `iss`;
-3. signature (`bad_signature`);
+2. `aud` is the address of a tenant of this gate and `iss` the address of a paired peer of that
+   tenant (`not_paired`; the same response for an unknown tenant);
+3. `kid` names the key recorded for that peer, and the signature verifies with that key
+   (`bad_signature` for either);
 4. `iat <= now + 300` (`from_future`) and `now - iat <= 604800` (`stale`);
 5. event id dedupe per `(tenant, iss, id)`: same `envelope_sha256` seen returns `200` with the
    stored receipt and status `duplicate`; a different one is `conflict`. Seen ids are kept for at
@@ -546,7 +556,8 @@ whose receipt does not verify counts as a failed attempt.
 ### 10.5 Receipt and errors
 
 A `200` response body is a JWS with `typ` `paseka-receipt+jwt` signed by the receiver
-(`contracts/wire/receipt.schema.json`): `v`, `iss` (receiver), `aud` (sender), `id` (event id),
+(`contracts/wire/receipt.schema.json`): `v`, `iss` (receiver address), `aud` (sender address),
+`id` (event id),
 `envelope_sha256`, `received_at`, `status` (`accepted` or `duplicate`). The sender stores it
 as delivery proof.
 
@@ -574,8 +585,8 @@ retry decision.
 
 ## 11. Pairing
 
-Pairing exchanges tenant keys and endpoints between an inviter (alice) and an invitee (bob).
-Both keys are pinned by the exchange; each owner consents on their side. The agent has no part
+Pairing exchanges tenant addresses, keys and endpoints between an inviter (alice) and an invitee
+(bob). Each side pins the other's key for the other's address; each owner consents on their side. The agent has no part
 in pairing.
 
 1. Invite. Alice creates an invite in her Mini App. Her gate stores
@@ -584,20 +595,23 @@ in pairing.
 2. Invite card. Bob opens the link; alice's consent bot receives `/start pair_<code>` from
    Telegram user U. The gate records U (id, username, name) on the invite (first opener only) and
    replies with the pair URI:
-   `paseka:pair?v=1&ep=<percent-encoded alice endpoint>&k=<alice key id>&c=<code>`.
+   `paseka:pair?v=1&ep=<percent-encoded alice endpoint>&a=<alice address>&k=<alice key id>&c=<code>`.
 3. Request. Bob gives the pair URI to his own gate (Mini App "Add peer", or a message from an
    approver to his consent bot). Bob's Mini App shows alice's endpoint host and key fingerprint;
    bob names the peer and consents at A2. Bob's gate POSTs to `<ep>/v1/pair` a JWS
-   `paseka-pair+jwt` signed by bob's key: `{v, type: "pair.request", id, iss: bob key, aud: k,
-   code, endpoint: bob endpoint, name_hint, iat}`.
-4. Accept. Alice's gate verifies the signature with the key in `iss` (self-certifying), `aud` is
-   the tenant that issued the code, `|now - iat| <= 300`, and consumes the code atomically
-   (`invite_invalid` if unknown, used or expired). It stores bob as a peer in state
-   `pending_owner` and answers `200` with a JWS signed by alice's key: `{v, type: "pair.accept",
-   id, iss: alice key, aud: bob key, request_id, request_sha256, endpoint: alice endpoint, iat}`.
-5. Bob's gate verifies the accept: signature, `iss` equals `k` from the URI (CA-37), `aud` is
-   bob's key, `request_sha256` is SHA-256 of the request JWS bytes. It stores alice as an active
-   T0 peer.
+   `paseka-pair+jwt` signed by bob's key: `{v, type: "pair.request", id, iss: bob address,
+   aud: a, key: bob key id, code, endpoint: bob endpoint, name_hint, iat}`.
+4. Accept. Alice's gate verifies the signature with the key in `key`, whose id `kid` names
+   (self-certifying), `aud` is the tenant that issued the code, `|now - iat| <= 300`, and
+   consumes the code atomically (`invite_invalid` if unknown, used or expired). An `iss` that is
+   one of its own tenants or already recorded for another peer of that tenant is refused
+   (`conflict`). It stores bob's `key` for bob's address as a peer in state `pending_owner` and
+   answers `200` with a JWS signed by alice's key: `{v, type: "pair.accept", id, iss: alice
+   address, aud: bob address, key: alice key id, request_id, request_sha256, endpoint: alice
+   endpoint, iat}`.
+5. Bob's gate verifies the accept: `kid` names `k` from the URI and the signature verifies with
+   it, `key` equals `k` and `iss` equals `a` (CA-37), `aud` is bob's address, `request_sha256` is
+   SHA-256 of the request JWS bytes. It stores key `k` for address `a` as an active T0 peer.
 6. Alice's owner sees in the Mini App: bob's key fingerprint, endpoint host, name hint (marked as
    claimed by the peer), the Telegram user U who opened the invite, and the short authentication
    string. Alice consents at A2; the peer becomes active at T0. Alice's gate then sends bob an
@@ -619,7 +633,8 @@ Invariants:
 - TI-1 Every persisted record carries `tenant`; every query filters by it; keys are composite
   `(tenant, id)`.
 - TI-2 The tenant is resolved only from the authenticated channel: the agent token, the consent
-  bot plus approver binding, the envelope `aud` key. Never from a payload field.
+  bot plus approver binding, the envelope `aud` address of a verified envelope. Never from a
+  payload field alone.
 - TI-3 An id of another tenant behaves exactly like a nonexistent id (`not_found`, same timing
   class).
 - TI-4 Identity keys, bot tokens, dictionaries, canaries, shelves, templates, policies, journals
@@ -628,8 +643,8 @@ Invariants:
   then requires the Telegram user to be an approver of that tenant (CA-39).
 - TI-6 Rate limits, storage quotas and queue sizes are per tenant.
 - TI-7 Journal export and migration to self-host export one tenant: its key, settings, peers,
-  journal. Peers keep working because the key id stays the same; only the endpoint changes, which
-  the gate announces through a later event type.
+  journal. Peers keep working because the address stays the same; only the endpoint changes,
+  which the gate announces through a later event type.
 
 ## 13. Versioning
 

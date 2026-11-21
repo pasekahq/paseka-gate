@@ -14,7 +14,7 @@ pub enum TokenError {
     Malformed(JwsError),
     /// `typ` differs from the expected type.
     WrongTyp,
-    /// `kid` differs from the expected key id.
+    /// `kid` does not name the expected key.
     WrongKid,
     /// Signature does not verify.
     BadSignature,
@@ -38,7 +38,8 @@ pub fn key_id(key: &VerifyingKey) -> KeyId {
     .expect("encoded key is a valid key id")
 }
 
-/// The verifying key named by a key id, for self-certifying pair requests (PROTOCOL §11).
+/// The verifying key named by a key id: the `key` of a pair request or the `k` of a pair URI
+/// (PROTOCOL §11).
 ///
 /// # Errors
 /// [`TokenError::BadSignature`] when the id does not decode to a valid Ed25519 point.
@@ -69,11 +70,11 @@ pub fn sign_mandate(key: &SigningKey, payload: &[u8]) -> String {
     format!("{}~", sign(key, Typ::Mandate, payload))
 }
 
-fn check(c: &Compact, typ: Typ, kid: &KeyId, key: &VerifyingKey) -> Result<Vec<u8>, TokenError> {
+fn check(c: &Compact, typ: Typ, key: &VerifyingKey) -> Result<Vec<u8>, TokenError> {
     if c.header.typ != typ {
         return Err(TokenError::WrongTyp);
     }
-    if &c.header.kid != kid || &key_id(key) != kid {
+    if c.header.kid != key_id(key) {
         return Err(TokenError::WrongKid);
     }
     let sig = Signature::from_slice(&c.signature).map_err(|_| TokenError::BadSignature)?;
@@ -82,25 +83,21 @@ fn check(c: &Compact, typ: Typ, kid: &KeyId, key: &VerifyingKey) -> Result<Vec<u
     Ok(c.payload.clone())
 }
 
-/// Verifies a compact JWS of type `typ` signed by `key`, whose id MUST be `kid`.
+/// Verifies a compact JWS of type `typ` whose `kid` names `key` and whose signature `key` makes.
 ///
 /// # Errors
 /// [`TokenError`] on any failed check.
-pub fn verify(
-    token: &str,
-    typ: Typ,
-    kid: &KeyId,
-    key: &VerifyingKey,
-) -> Result<Vec<u8>, TokenError> {
-    check(&Compact::parse(token)?, typ, kid, key)
+pub fn verify(token: &str, typ: Typ, key: &VerifyingKey) -> Result<Vec<u8>, TokenError> {
+    check(&Compact::parse(token)?, typ, key)
 }
 
-/// Verifies a mandate SD-JWT (zero disclosures) signed by `key`, whose id MUST be `kid`.
+/// Verifies a mandate SD-JWT (zero disclosures) whose `kid` names `key` and whose signature
+/// `key` makes.
 ///
 /// # Errors
 /// [`TokenError`] on any failed check.
-pub fn verify_mandate(token: &str, kid: &KeyId, key: &VerifyingKey) -> Result<Vec<u8>, TokenError> {
-    check(&Compact::parse_sd_jwt(token)?, Typ::Mandate, kid, key)
+pub fn verify_mandate(token: &str, key: &VerifyingKey) -> Result<Vec<u8>, TokenError> {
+    check(&Compact::parse_sd_jwt(token)?, Typ::Mandate, key)
 }
 
 #[cfg(test)]
@@ -109,25 +106,20 @@ mod tests {
     use crate::testkit::key;
 
     #[test]
-    fn a_token_verifies_only_with_its_type_kid_and_key() {
+    fn a_token_verifies_only_with_its_type_and_the_key_its_kid_names() {
         let (alice, bob) = (key(1), key(2));
         let kid = key_id(&alice.verifying_key());
         let t = sign(&alice, Typ::Envelope, b"{}");
         assert_eq!(
-            verify(&t, Typ::Envelope, &kid, &alice.verifying_key()),
+            verify(&t, Typ::Envelope, &alice.verifying_key()),
             Ok(b"{}".to_vec())
         );
         assert_eq!(
-            verify(&t, Typ::Receipt, &kid, &alice.verifying_key()),
+            verify(&t, Typ::Receipt, &alice.verifying_key()),
             Err(TokenError::WrongTyp)
         );
         assert_eq!(
-            verify(
-                &t,
-                Typ::Envelope,
-                &key_id(&bob.verifying_key()),
-                &bob.verifying_key()
-            ),
+            verify(&t, Typ::Envelope, &bob.verifying_key()),
             Err(TokenError::WrongKid)
         );
         assert_eq!(key_from_id(&kid), Ok(alice.verifying_key()));

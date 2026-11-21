@@ -39,8 +39,8 @@ pub struct Attack {
 pub const NEEDS_SERVER: &str = "the gate daemon (paseka serve)";
 /// Missing part: the consent bot and Mini App with initData verification.
 pub const NEEDS_BOT: &str = "the consent bot and Mini App";
-/// Missing part: pairing messages and invite codes.
-pub const NEEDS_PAIRING: &str = "pairing (PROTOCOL §11)";
+/// Missing part: invite codes stored and consumed by the inviter's gate.
+pub const NEEDS_PAIRING: &str = "invite codes (PROTOCOL §11)";
 /// Missing part: the per-tenant hash-chained journal.
 pub const NEEDS_JOURNAL: &str = "the journal";
 /// Missing part: an installed gate running as its own unix user.
@@ -84,13 +84,13 @@ attacks! {
     "CA-28" "SP-10" "second open mandate while one is pending" => policy::ca28_second_open_mandate;
     "CA-29" "SP-11" "share of a doc not on an open shelf, unknown, or path-like" => policy::ca29_share_outside_shelf;
     "CA-30" "SP-11" "share note with a link, a blob or 201 characters" => policy::ca30_share_note_smuggle;
-    "CA-31" "SP-12" "envelope with a bad signature, unknown key, kid mismatch, alg none or wrong typ" => wire::ca31_forged_envelopes;
+    "CA-31" "SP-12" "envelope with a bad signature, an unknown sender or key, another peer's key, alg none or wrong typ" => wire::ca31_forged_envelopes;
     "CA-32" "SP-12" "envelope from tenant A's peer addressed to tenant B" => wire::ca32_cross_tenant_envelope;
     "CA-33" "SP-13" "envelope replayed after the window, from the future, or same id other bytes" => wire::ca33_wire_windows;
     "CA-34" "SP-14" "mandate for other content, recipient, thread, lifetime, level or a reused jti" => wire::ca34_mandate_mismatch;
     "CA-35" "SP-15" "used or expired invite code" => || Outcome::Pending(NEEDS_PAIRING);
     "CA-36" "SP-15" "messages before the inviter's owner confirmed the pairing" => wire::ca36_pairing_pending;
-    "CA-37" "SP-15" "pair accept signed by a key other than the one in the pair URI" => || Outcome::Pending(NEEDS_PAIRING);
+    "CA-37" "SP-15" "pair accept signed by a key other than the one in the pair URI, or from another address" => wire::ca37_pair_accept_other_key;
     "CA-38" "SP-16" "tenant A's agent token with tenant B's ids" => || Outcome::Pending(NEEDS_SERVER);
     "CA-39" "SP-16" "approver of tenant A decides tenant B's request on a shared bot" => consent::ca39_cross_tenant_decision;
     "CA-40" "SP-17" "bidi, zero-width or control characters in the body" => policy::ca40_invisible_characters;

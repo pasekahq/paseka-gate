@@ -8,7 +8,7 @@ is normative in `docs/PROTOCOL.md`; these files fix the shapes. Schema `$id`s li
 
 | Path | Objects |
 |------|---------|
-| `common.schema.json` | shared `$defs`: ids, key ids, hashes, levels, states, attachment metadata |
+| `common.schema.json` | shared `$defs`: ids, addresses, key ids, hashes, levels, states, attachment metadata |
 | `mandate/` | `closed`, `open` (JWS payload claims), `jws-header` (protected header of every paseka JWS) |
 | `evidence/` | approval evidence: `telegram-button` (A1), `telegram-miniapp` (A2), `open-mandate` (A0), `passkey` (A3, reserved) |
 | `agent/` | `<tool>.input` and `<tool>.output` for the ten agent tools, `views` (shared output objects), `error` |
@@ -24,9 +24,14 @@ implementation SHOULD walk this tree, and the Rust types SHOULD round-trip every
 
 `fixtures/vectors/digests.json` holds byte-exact vectors: release digests (PROTOCOL §3.2),
 approval challenges (§3.3), the short authentication string (§11), and signed objects (a closed
-mandate as SD-JWT, the envelope carrying it, its receipt, a pair request) made with the test keys
-listed in the file. Ed25519 signatures are deterministic, so implementations MUST reproduce the
-compact strings exactly from the given claims serialization and seed.
+mandate as SD-JWT, the envelope carrying it, its receipt, a pair request and its accept) made with
+the test keys listed in the file. Each test key has a seed, SHA-256('paseka test key <name>'),
+and an address, the tenant id. Ed25519 signatures are deterministic, so implementations MUST
+reproduce the compact strings exactly from the given claims serialization and seed.
+
+The file is generated, never edited by hand: `PASEKA_WRITE_VECTORS=1 cargo test -p paseka-core
+--test vectors` writes it from the seeds, and the same test without the variable fails when the
+file differs from what the generator writes.
 
 All fixture data is synthetic: alice, bob, carol, example.org.
 
@@ -47,6 +52,19 @@ Contracts only grow within a major version.
   answers `unsupported`.
 - The major version is the `v` field. There are no minor version numbers on the wire; growth is
   detected by presence of fields.
+
+## Changelog
+
+### Version 1: address split from key
+
+Made in place in v1 before any release or deployed peer (ADR 0013).
+
+- `iss` and `aud` of `wire/envelope`, `wire/receipt`, `pairing/request` and `pairing/accept`, and
+  `iss` and `to` of `mandate/closed` and `mandate/open`, are addresses (`$defs/address`, the
+  tenant id) instead of key ids.
+- `pairing/request` and `pairing/accept` carry the signer's key in the new required field `key`.
+- The pair URI carries the inviter's address `a` next to its key `k`.
+- `fixtures/vectors/digests.json` binds addresses into the release digest and adds a pair accept.
 
 ## Tolerant readers
 

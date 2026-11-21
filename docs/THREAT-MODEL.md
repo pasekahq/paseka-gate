@@ -24,7 +24,8 @@ states who attacks what, what we assume, and which property each conformance att
 - AS-1 Owner's private data reachable by OA: notes, memory, files, MCP sources.
 - AS-2 The release decision: the binding between owner consent and the exact bytes, recipient
   and attachments that leave.
-- AS-3 Tenant identity key (Ed25519), used for envelopes, mandates and receipts.
+- AS-3 Tenant identity key (Ed25519), used for envelopes, mandates and receipts. The tenant's
+  address is its permanent tenant id, not the key; peers record which key is current for it.
 - AS-4 Consent bot token and webhook secret.
 - AS-5 Security settings: approvers, policies, open mandates, trust levels, peers, shelves,
   dictionary, canaries, fingerprints.
@@ -175,10 +176,11 @@ open to that peer, plus a constrained note.
 - CA-30 Share with a note containing a link, an encoded blob or 201 characters. Result:
   `invalid_input`.
 
-SP-12 Peer authenticity. Inbound envelopes are accepted only when signed by an active paired
-key of the addressed tenant.
-- CA-31 Envelope with a bad signature, an unknown key, a `kid` different from `iss`, and `alg`
-  `none` or `HS256`. Result: rejected.
+SP-12 Peer authenticity. Inbound envelopes are accepted only when `iss` is the address of a paired
+peer of the addressed tenant and the signature is by the key recorded for that address.
+- CA-31 Envelope from an unknown address (`not_paired`); with a bad signature, an unknown key, or
+  the key of another peer under this peer's address (`bad_signature`); with `alg` `none` or
+  `HS256` (`malformed`). Result: rejected.
 - CA-32 Envelope from a peer of tenant A addressed to tenant B on the same gate. Result:
   `not_paired`.
 
@@ -193,12 +195,13 @@ signature by the sender key, recipient, content hash, attachments, release diges
   signed by another key. Result: `mandate_invalid`.
 
 SP-15 Pairing integrity. A peer becomes active only after a single-use, unexpired invite code is
-redeemed and the owner of each side consents; each side pins the other key from the exchange.
+redeemed and the owner of each side consents; each side pins the other's key for the other's
+address from the exchange.
 - CA-35 Redeem a used or expired code. Result: rejected.
 - CA-36 Send messages from a requester whose pairing the inviter's owner has not confirmed.
   Result: `not_paired`.
-- CA-37 Answer a pair request with an accept signed by a key other than the one in the pair URI.
-  Result: the requester rejects it.
+- CA-37 Answer a pair request with an accept signed by a key other than the one in the pair URI,
+  or naming another address than the URI. Result: the requester rejects it.
 
 SP-16 Tenant isolation. No operation of one tenant reads, changes or decides anything of another.
 - CA-38 Use tenant A's agent token with tenant B's message, draft and doc ids. Result:

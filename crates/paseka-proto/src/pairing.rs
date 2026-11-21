@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{KeyId, Nonce, PairingId, Sha256, UnixSecs, V1};
+use crate::{Address, KeyId, Nonce, PairingId, Sha256, UnixSecs, V1};
 
 /// `type` of a pair request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -22,7 +22,7 @@ pub enum PairAcceptType {
     PairAccept,
 }
 
-/// Invitee to inviter: redeem an invite code. Self-certifying: signed by `iss`.
+/// Invitee to inviter: redeem an invite code. Self-certifying: signed by `key`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PairRequest {
     /// Contract version.
@@ -32,10 +32,12 @@ pub struct PairRequest {
     pub kind: PairRequestType,
     /// Message id.
     pub id: PairingId,
-    /// Invitee key id.
-    pub iss: KeyId,
-    /// Inviter key id from the pair URI.
-    pub aud: KeyId,
+    /// Invitee address.
+    pub iss: Address,
+    /// Inviter address from the pair URI.
+    pub aud: Address,
+    /// Invitee key, pinned by the inviter for `iss`.
+    pub key: KeyId,
     /// Invite code.
     pub code: Nonce,
     /// Invitee endpoint, `https`.
@@ -56,10 +58,12 @@ pub struct PairAccept {
     pub kind: PairAcceptType,
     /// Message id.
     pub id: PairingId,
-    /// Inviter key id.
-    pub iss: KeyId,
-    /// Invitee key id.
-    pub aud: KeyId,
+    /// Inviter address.
+    pub iss: Address,
+    /// Invitee address.
+    pub aud: Address,
+    /// Inviter key, pinned by the invitee for `iss`; equals the key in the pair URI.
+    pub key: KeyId,
     /// The request answered.
     pub request_id: PairingId,
     /// SHA-256 of the request's compact JWS bytes.

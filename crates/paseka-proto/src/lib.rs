@@ -19,8 +19,8 @@ pub mod pairing;
 pub mod tools;
 
 pub use ids::{
-    DocId, DraftId, EventId, KeyId, MandateId, MessageId, Nonce, PairingId, PeerHandle, RequestId,
-    Sha256, ShelfId, TemplateId, TenantId, ThreadId,
+    Address, DocId, DraftId, EventId, KeyId, MandateId, MessageId, Nonce, PairingId, PeerHandle,
+    RequestId, Sha256, ShelfId, TemplateId, TenantId, ThreadId,
 };
 pub use level::{Level, OpenTrust, Trust};
 

@@ -13,7 +13,7 @@ use paseka_proto::mandate::{AttachmentRule, Constraints, OpenKind, OpenMandate, 
 use paseka_proto::tools::{FieldSpec, FieldType, FieldValue, ShareInput, TOOL_NAMES, ToolCall};
 use paseka_proto::{DocId, Level, OpenTrust, Sha256, ShelfId, TemplateId, V1};
 
-use crate::world::{BODY, NOW, TTL, draft, jti, key, kid, seed, tenant, thread};
+use crate::world::{BODY, NOW, TTL, address, draft, jti, seed, tenant, thread};
 use crate::{Outcome, all, expect};
 
 const CANARY: &str = "PASEKA-CANARY-7f3a9c";
@@ -173,9 +173,9 @@ fn open_t1(i: u8, max_messages: u32) -> OpenMandate {
     OpenMandate {
         v: V1,
         kind: OpenKind::Open,
-        iss: kid(&key(1)),
+        iss: address(1),
         tenant: tenant(1),
-        to: kid(&key(2)),
+        to: address(2),
         jti: jti(i),
         iat: NOW,
         nbf: NOW,
@@ -214,7 +214,7 @@ fn active(m: &OpenMandate) -> OpenBook {
 pub(crate) fn ca25_open_mandate_bounds() -> Outcome {
     let m = open_t1(1, 2);
     let mut book = active(&m);
-    let (to, t, th) = (kid(&key(2)), template(), thread(1));
+    let (to, t, th) = (address(2), template(), thread(1));
     let c = Candidate {
         to: &to,
         kind: DraftKind::Template,
@@ -267,7 +267,7 @@ pub(crate) fn ca27_revoked_mandate() -> Outcome {
     let m = open_t1(1, 10);
     let mut book = active(&m);
     book.revoke(&m.tenant, &m.jti);
-    let (to, t, th) = (kid(&key(2)), template(), thread(1));
+    let (to, t, th) = (address(2), template(), thread(1));
     let c = Candidate {
         to: &to,
         kind: DraftKind::Template,
