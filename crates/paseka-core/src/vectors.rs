@@ -1,5 +1,6 @@
-//! Generator of `contracts/fixtures/vectors/digests.json` and of the closed mandate inside the
-//! `wire/envelope` fixtures, from the synthetic seeds.
+//! Generator of `contracts/fixtures/vectors/digests.json`, of the closed mandate inside the
+//! `wire/envelope` fixtures, and of the `key.rotate` and `wire/key-proof` fixtures, from the
+//! synthetic seeds.
 //!
 //! `cargo test -p paseka-core --lib vectors::` fails unless those files are exactly the
 //! generator's output; with `PASEKA_WRITE_VECTORS=1` it rewrites them instead.
@@ -15,10 +16,12 @@ use serde_json::Value;
 use crate::envelope::seal;
 use crate::hash::{Release, approval_challenge, content_sha256, release_digest, sas, sha256};
 use crate::mandate::{CLOSED_TTL_SECS, issue};
+use crate::peer::{Grace, key_rotate_data, key_sha256};
 use crate::testkit::{VECTORS_PATH, event, pairing_id, tenant, thread, ulid};
 use crate::token::{self, key_id};
 use paseka_proto::envelope::{
-    Envelope, EventType, MessageData, Receipt, ReceiptStatus, WireAttachment,
+    Envelope, EventType, KeyProof, KeyRotateData, MessageData, Receipt, ReceiptStatus,
+    WireAttachment,
 };
 use paseka_proto::evidence::{Channel, Decision, RequestBinding, TelegramButtonEvidence};
 use paseka_proto::jws::Typ;
@@ -102,6 +105,10 @@ struct SigningKeys {
     alice: TestKey,
     bob: TestKey,
     carol: TestKey,
+    #[serde(rename = "alice-2")]
+    alice_2: TestKey,
+    #[serde(rename = "alice-3")]
+    alice_3: TestKey,
 }
 
 #[derive(Serialize)]
@@ -124,6 +131,13 @@ struct SignedEnvelope {
 }
 
 #[derive(Serialize)]
+struct SignedKeyRotate {
+    payload: Envelope<KeyRotateData>,
+    proof_payload: KeyProof,
+    compact: String,
+}
+
+#[derive(Serialize)]
 struct Signed {
     evidence_bytes_utf8: String,
     closed_mandate: SignedClaims<ClosedMandate>,
@@ -131,6 +145,7 @@ struct Signed {
     receipt: SignedPayload<Receipt>,
     pair_request: SignedPayload<PairRequest>,
     pair_accept: SignedPayload<PairAccept>,
+    key_rotate: SignedKeyRotate,
 }
 
 struct Party {
@@ -232,6 +247,7 @@ fn generate() -> Vectors {
         Party::new("bob", 2),
         Party::new("carol", 3),
     );
+    let (alice_2, alice_3) = (Party::new("alice-2", 1), Party::new("alice-3", 1));
     let first = release_vector(&alice, &bob, thread(1), Some(event(1)), BODY, vec![]);
     let second = release_vector(
         &bob,
@@ -271,7 +287,7 @@ fn generate() -> Vectors {
             code: code.clone(),
         },
     };
-    let signed = signed(&alice, &bob, &first, &challenge, code);
+    let signed = signed(&alice, &bob, (&alice_2, &alice_3), &first, &challenge, code);
     Vectors {
         description: "Test vectors for PROTOCOL sections 3.2, 3.3, 11. Synthetic data.",
         release_digest: vec![first, second],
@@ -279,10 +295,12 @@ fn generate() -> Vectors {
         sas: vec![sas_vector],
         signing_keys: SigningKeys {
             description: "Ed25519 seed = SHA-256('paseka test key <name>'); address = tenant id. \
-                          Test only.",
+                          alice-2 and alice-3 are alice's next keys. Test only.",
             alice: alice.test_key(),
             bob: bob.test_key(),
             carol: carol.test_key(),
+            alice_2: alice_2.test_key(),
+            alice_3: alice_3.test_key(),
         },
         signed,
     }
@@ -311,9 +329,11 @@ fn evidence(alice: &Party, challenge: &ChallengeVector) -> String {
     serde_json::to_string(&evidence).expect("evidence serialises")
 }
 
+/// bob's request and alice's accept, which commits to `alice_next`.
 fn pairing_messages(
     alice: &Party,
     bob: &Party,
+    alice_next: &Party,
     code: Nonce,
 ) -> (SignedPayload<PairRequest>, SignedPayload<PairAccept>) {
     let request = PairRequest {
@@ -327,6 +347,7 @@ fn pairing_messages(
         endpoint: "https://gate.example.org/bob".into(),
         name_hint: "Bob".into(),
         iat: AT - 30,
+        next_key_sha256: None,
     };
     let request_jws = sign(&bob.key, Typ::Pair, &request);
     let accept = PairAccept {
@@ -340,6 +361,7 @@ fn pairing_messages(
         request_sha256: sha256(request_jws.as_bytes()),
         endpoint: "https://gate.example.org/alice".into(),
         iat: AT - 29,
+        next_key_sha256: Some(key_sha256(&alice_next.key.verifying_key())),
     };
     (
         SignedPayload {
@@ -353,9 +375,42 @@ fn pairing_messages(
     )
 }
 
+/// alice's `key.rotate` to bob: from her pairing key to `new`, committing to `next`.
+fn key_rotate(alice: &Party, bob: &Party, new: &Party, next: &Party) -> SignedKeyRotate {
+    let iat = AT + 3600;
+    let data = key_rotate_data(
+        &alice.address(),
+        &new.key,
+        key_sha256(&next.key.verifying_key()),
+        Grace::default().previous_valid_until(iat),
+    );
+    let proof_payload = KeyProof {
+        v: V1,
+        iss: alice.address(),
+        new_key: data.new_key.clone(),
+        next_key_sha256: data.next_key_sha256,
+        previous_valid_until: data.previous_valid_until,
+    };
+    let payload = Envelope {
+        v: V1,
+        iss: alice.address(),
+        aud: bob.address(),
+        id: event(3),
+        kind: EventType::KeyRotate,
+        iat,
+        data,
+    };
+    SignedKeyRotate {
+        compact: seal(&alice.key, &payload),
+        payload,
+        proof_payload,
+    }
+}
+
 fn signed(
     alice: &Party,
     bob: &Party,
+    (alice_next, alice_after_next): (&Party, &Party),
     release: &ReleaseVector,
     challenge: &ChallengeVector,
     code: Nonce,
@@ -413,7 +468,7 @@ fn signed(
         received_at: AT + 1,
         status: ReceiptStatus::Accepted,
     };
-    let (pair_request, pair_accept) = pairing_messages(alice, bob, code);
+    let (pair_request, pair_accept) = pairing_messages(alice, bob, alice_next, code);
     Signed {
         evidence_bytes_utf8: evidence_bytes,
         closed_mandate: SignedClaims {
@@ -431,6 +486,7 @@ fn signed(
         },
         pair_request,
         pair_accept,
+        key_rotate: key_rotate(alice, bob, alice_next, alice_after_next),
     }
 }
 
@@ -442,8 +498,51 @@ fn sign<T: Serialize>(key: &SigningKey, typ: Typ, payload: &T) -> String {
     )
 }
 
-fn envelope_fixtures() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../contracts/fixtures/wire/envelope")
+fn wire_fixtures() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../contracts/fixtures/wire")
+}
+
+fn json_file<T: Serialize>(value: &T) -> String {
+    let mut text = serde_json::to_string_pretty(value).expect("fixture serialises");
+    text.push('\n');
+    text
+}
+
+/// The `key.rotate` envelope fixtures and the `wire/key-proof` fixtures, from the signed vector.
+fn key_rotate_fixtures(k: &SignedKeyRotate) -> Vec<(PathBuf, String)> {
+    let (envelope, proof) = (
+        wire_fixtures().join("envelope"),
+        wire_fixtures().join("key-proof"),
+    );
+    let payload = serde_json::to_value(&k.payload).expect("envelope serialises");
+    let mut without_proof = payload.clone();
+    without_proof["data"]
+        .as_object_mut()
+        .expect("data is an object")
+        .remove("proof");
+    let mut malformed_key = payload;
+    malformed_key["data"]["new_key"] = "ed25519:not-a-key".into();
+    let mut key_as_sender = serde_json::to_value(&k.proof_payload).expect("proof serialises");
+    key_as_sender["iss"] = k.proof_payload.new_key.as_str().into();
+    vec![
+        (
+            envelope.join("valid/key-rotate.json"),
+            json_file(&k.payload),
+        ),
+        (
+            envelope.join("invalid/key-rotate-without-proof.json"),
+            json_file(&without_proof),
+        ),
+        (
+            envelope.join("invalid/key-rotate-malformed-new-key.json"),
+            json_file(&malformed_key),
+        ),
+        (proof.join("valid/basic.json"), json_file(&k.proof_payload)),
+        (
+            proof.join("invalid/key-id-as-sender.json"),
+            json_file(&key_as_sender),
+        ),
+    ]
 }
 
 /// `text` of an envelope fixture with its `data.mandate`, if any, replaced by `mandate`; a
@@ -464,12 +563,15 @@ fn with_mandate(text: &str, mandate: &str) -> String {
 /// Every generated file with its content.
 fn outputs() -> Vec<(PathBuf, String)> {
     let vectors = generate();
-    let mut text = serde_json::to_string_pretty(&vectors).expect("vectors serialise");
-    text.push('\n');
-    let mut out = vec![(PathBuf::from(VECTORS_PATH), text)];
+    let mut out = vec![(PathBuf::from(VECTORS_PATH), json_file(&vectors))];
+    out.extend(key_rotate_fixtures(&vectors.signed.key_rotate));
     for dir in ["valid", "invalid"] {
-        for entry in std::fs::read_dir(envelope_fixtures().join(dir)).expect("fixture dir") {
+        let fixtures = wire_fixtures().join("envelope").join(dir);
+        for entry in std::fs::read_dir(fixtures).expect("fixture dir") {
             let path = entry.expect("dir entry").path();
+            if out.iter().any(|(p, _)| *p == path) {
+                continue;
+            }
             let text = std::fs::read_to_string(&path).expect("fixture text");
             out.push((
                 path,
@@ -481,10 +583,12 @@ fn outputs() -> Vec<(PathBuf, String)> {
 }
 
 #[test]
-fn digests_json_and_envelope_fixture_mandates_are_the_generator_output() {
+fn vectors_and_generated_fixtures_are_the_generator_output() {
     let write = std::env::var_os("PASEKA_WRITE_VECTORS").is_some_and(|v| v == "1");
     for (path, text) in outputs() {
         if write {
+            let dir = path.parent().expect("a fixture lives in a directory");
+            std::fs::create_dir_all(dir).expect("fixture directory created");
             std::fs::write(&path, &text).expect("generated file written");
             continue;
         }

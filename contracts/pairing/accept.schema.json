@@ -46,6 +46,10 @@
     },
     "iat": {
       "$ref": "../common.schema.json#/$defs/unix_time"
+    },
+    "next_key_sha256": {
+      "$ref": "../common.schema.json#/$defs/sha256",
+      "description": "Inviter's first rotation commitment: SHA-256 of its next 32-byte public key. Optional."
     }
   }
 }

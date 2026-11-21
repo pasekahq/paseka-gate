@@ -3,9 +3,10 @@
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use ed25519_dalek::SigningKey;
-use paseka_core::envelope::{MAX_AGE_SECS, PeerState};
+use paseka_core::envelope::{MAX_AGE_SECS, PeerConflict, PeerState};
 use paseka_core::mandate;
 use paseka_core::pairing::{AcceptInvalid, Expected, verify_accept};
+use paseka_core::peer::{PeerKeys, Rotation};
 use paseka_core::token;
 use paseka_proto::envelope::{ReceiptStatus, WireErrorCode};
 use paseka_proto::jws::Typ;
@@ -13,8 +14,8 @@ use paseka_proto::pairing::{PairAccept, PairAcceptType, PairRequest, PairRequest
 use paseka_proto::{Level, Sha256, V1};
 
 use crate::world::{
-    BODY, NOW, Wire, address, attachment, key, kid, mandate_for, message, nonce, pairing_id,
-    sealed, tenant, thread,
+    ALICE_AFTER_NEXT, ALICE_NEXT, BODY, NOW, Wire, address, attachment, grace, key, kid,
+    mandate_for, message, nonce, pairing_id, rotation, sealed, tenant, thread,
 };
 use crate::{Outcome, all, expect};
 
@@ -42,12 +43,14 @@ pub(crate) fn ca12_envelope_replay() -> Outcome {
 pub(crate) fn ca31_forged_envelopes() -> Outcome {
     let mut w = Wire::new();
     let carol = key(3);
-    w.recv.set_peer(
+    if let Err(e) = w.recv.add_peer(
         &tenant(2),
         address(3),
-        carol.verifying_key(),
+        PeerKeys::paired(carol.verifying_key(), None),
         PeerState::Active,
-    );
+    ) {
+        return Outcome::Fail(format!("setup: carol not recorded: {e:?}"));
+    }
     let env = message(BODY, vec![], 1, |_| {});
     let stranger = key(9);
     let unknown_sender = {
@@ -183,12 +186,13 @@ pub(crate) fn ca34_mandate_mismatch() -> Outcome {
 
 pub(crate) fn ca36_pairing_pending() -> Outcome {
     let mut w = Wire::new();
-    w.recv.set_peer(
-        &tenant(2),
-        address(1),
-        w.alice.verifying_key(),
-        PeerState::PendingOwner,
-    );
+    let keys = PeerKeys::paired(w.alice.verifying_key(), None);
+    if let Err(e) = w
+        .recv
+        .add_peer(&tenant(2), address(1), keys, PeerState::PendingOwner)
+    {
+        return Outcome::Fail(format!("setup: {e:?}"));
+    }
     let jws = sealed(&w.alice, &message(BODY, vec![], 1, |_| {}));
     code(&mut w, &jws, NOW, WireErrorCode::PairingPending)
 }
@@ -206,6 +210,7 @@ fn pair_accept(signer: &SigningKey, request: &str, edit: fn(&mut PairAccept)) ->
         request_sha256: paseka_core::hash::sha256(request.as_bytes()),
         endpoint: "https://gate.example.org/alice".into(),
         iat: NOW,
+        next_key_sha256: None,
     };
     edit(&mut a);
     token::sign(
@@ -228,6 +233,7 @@ pub(crate) fn ca37_pair_accept_other_key() -> Outcome {
         endpoint: "https://gate.example.org/bob".into(),
         name_hint: "Bob".into(),
         iat: NOW,
+        next_key_sha256: None,
     };
     let request = token::sign(
         &bob,
@@ -264,5 +270,100 @@ pub(crate) fn ca37_pair_accept_other_key() -> Outcome {
             ),
             |e| *e == AcceptInvalid::Inviter,
         ),
+    ])
+}
+
+/// alice's genuine rotation from key 1 to [`ALICE_NEXT`], accepted by bob at `NOW + 1`.
+fn rotate_genuinely(w: &mut Wire) -> Result<(), Outcome> {
+    let jws = rotation(&w.alice, ALICE_NEXT, ALICE_NEXT, ALICE_AFTER_NEXT, 200);
+    match w.recv.accept(&jws, NOW + 1).map(|a| a.rotation) {
+        Ok(Some(Rotation::Rotated)) => Ok(()),
+        other => Err(Outcome::Fail(format!("setup: genuine rotation: {other:?}"))),
+    }
+}
+
+fn alice_current_key(w: &Wire) -> Option<ed25519_dalek::VerifyingKey> {
+    w.recv
+        .peer_keys(&tenant(2), &address(1))
+        .map(|k| *k.current())
+}
+
+pub(crate) fn ca48_key_substitution() -> Outcome {
+    let mut w = Wire::new();
+    let original = alice_current_key(&w);
+    let attacker = key(9);
+    let proof_by_other_key = rotation(&w.alice, ALICE_NEXT, 9, ALICE_AFTER_NEXT, 200);
+    let rotation_refused = code(
+        &mut w,
+        &proof_by_other_key,
+        NOW + 1,
+        WireErrorCode::BadSignature,
+    );
+    let repaired = w.recv.add_peer(
+        &tenant(2),
+        address(1),
+        PeerKeys::paired(attacker.verifying_key(), None),
+        PeerState::Active,
+    );
+    let own_address = w.recv.add_peer(
+        &tenant(2),
+        address(2),
+        PeerKeys::paired(attacker.verifying_key(), None),
+        PeerState::Active,
+    );
+    let by_attacker = sealed(&attacker, &message(BODY, vec![], 1, |_| {}));
+    let unchanged = if alice_current_key(&w) == original {
+        Outcome::Pass
+    } else {
+        Outcome::Fail("alice's recorded key changed".into())
+    };
+    all([
+        rotation_refused,
+        expect(repaired, |e| *e == PeerConflict::OtherKey),
+        expect(own_address, |e| *e == PeerConflict::OwnTenant),
+        code(&mut w, &by_attacker, NOW + 2, WireErrorCode::BadSignature),
+        unchanged,
+    ])
+}
+
+pub(crate) fn ca49_rotation_not_by_current_key() -> Outcome {
+    let mut w = Wire::new();
+    let stranger = rotation(&key(9), ALICE_NEXT, ALICE_NEXT, ALICE_AFTER_NEXT, 201);
+    let by_stranger = code(&mut w, &stranger, NOW + 1, WireErrorCode::BadSignature);
+    if let Err(fail) = rotate_genuinely(&mut w) {
+        return fail;
+    }
+    let by_previous = rotation(&w.alice, ALICE_AFTER_NEXT, ALICE_AFTER_NEXT, 6, 202);
+    let previous_refused = code(&mut w, &by_previous, NOW + 2, WireErrorCode::BadSignature);
+    let unchanged = if alice_current_key(&w) == Some(key(ALICE_NEXT).verifying_key()) {
+        Outcome::Pass
+    } else {
+        Outcome::Fail("a rotation by the previous key moved alice's key".into())
+    };
+    all([by_stranger, previous_refused, unchanged])
+}
+
+pub(crate) fn ca50_previous_key_after_grace() -> Outcome {
+    let mut w = Wire::new();
+    if let Err(fail) = rotate_genuinely(&mut w) {
+        return fail;
+    }
+    let until = grace().previous_valid_until(NOW);
+    let new = key(ALICE_NEXT);
+    let in_grace = w
+        .recv
+        .accept(
+            &sealed(&w.alice, &message(BODY, vec![], 1, |_| {})),
+            until - 1,
+        )
+        .map(|a| a.status);
+    if in_grace != Ok(ReceiptStatus::Accepted) {
+        return Outcome::Fail(format!("setup: previous key in its grace: {in_grace:?}"));
+    }
+    let old_envelope = sealed(&w.alice, &message(BODY, vec![], 2, |_| {}));
+    let old_mandate = sealed(&new, &message(BODY, vec![], 3, |_| {}));
+    all([
+        code(&mut w, &old_envelope, until, WireErrorCode::BadSignature),
+        code(&mut w, &old_mandate, until, WireErrorCode::MandateInvalid),
     ])
 }

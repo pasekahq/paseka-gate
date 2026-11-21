@@ -1,0 +1,13 @@
+{
+  "v": 1,
+  "type": "pair.accept",
+  "id": "p_01JD0000000000000000000002",
+  "iss": "t_01JD0000000000000000000001",
+  "aud": "t_01JD0000000000000000000002",
+  "key": "ed25519:YM6rJ7zZ2l98CigfxePpz270jIk0mSfrMRnjzMm2TXc",
+  "request_id": "p_01JD0000000000000000000001",
+  "request_sha256": "27ec150bd491314cceda57c7b762b0ec5d741099f92dac7c83b82a7a76e0e4d5",
+  "endpoint": "https://gate.example.org/alice",
+  "iat": 1794268801,
+  "next_key_sha256": "d2d75b02792239da8512ea594e803a82480230c7f495c058c9cb0c736cf47a85"
+}

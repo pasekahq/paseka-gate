@@ -70,11 +70,16 @@ pub fn sign_mandate(key: &SigningKey, payload: &[u8]) -> String {
     format!("{}~", sign(key, Typ::Mandate, payload))
 }
 
-fn check(c: &Compact, typ: Typ, key: &VerifyingKey) -> Result<Vec<u8>, TokenError> {
+fn check(
+    c: &Compact,
+    typ: Typ,
+    resolve: impl FnOnce(&KeyId) -> Option<VerifyingKey>,
+) -> Result<Vec<u8>, TokenError> {
     if c.header.typ != typ {
         return Err(TokenError::WrongTyp);
     }
-    if c.header.kid != key_id(key) {
+    let key = resolve(&c.header.kid).ok_or(TokenError::WrongKid)?;
+    if c.header.kid != key_id(&key) {
         return Err(TokenError::WrongKid);
     }
     let sig = Signature::from_slice(&c.signature).map_err(|_| TokenError::BadSignature)?;
@@ -88,16 +93,31 @@ fn check(c: &Compact, typ: Typ, key: &VerifyingKey) -> Result<Vec<u8>, TokenErro
 /// # Errors
 /// [`TokenError`] on any failed check.
 pub fn verify(token: &str, typ: Typ, key: &VerifyingKey) -> Result<Vec<u8>, TokenError> {
-    check(&Compact::parse(token)?, typ, key)
+    verify_with(token, typ, |kid| (*kid == key_id(key)).then_some(*key))
 }
 
-/// Verifies a mandate SD-JWT (zero disclosures) whose `kid` names `key` and whose signature
-/// `key` makes.
+/// Verifies a compact JWS of type `typ` with the key `resolve` returns for its `kid`; `None`
+/// refuses it as [`TokenError::WrongKid`].
 ///
 /// # Errors
 /// [`TokenError`] on any failed check.
-pub fn verify_mandate(token: &str, key: &VerifyingKey) -> Result<Vec<u8>, TokenError> {
-    check(&Compact::parse_sd_jwt(token)?, Typ::Mandate, key)
+pub fn verify_with(
+    token: &str,
+    typ: Typ,
+    resolve: impl FnOnce(&KeyId) -> Option<VerifyingKey>,
+) -> Result<Vec<u8>, TokenError> {
+    check(&Compact::parse(token)?, typ, resolve)
+}
+
+/// Verifies a mandate SD-JWT (zero disclosures) with the key `resolve` returns for its `kid`.
+///
+/// # Errors
+/// [`TokenError`] on any failed check.
+pub fn verify_mandate_with(
+    token: &str,
+    resolve: impl FnOnce(&KeyId) -> Option<VerifyingKey>,
+) -> Result<Vec<u8>, TokenError> {
+    check(&Compact::parse_sd_jwt(token)?, Typ::Mandate, resolve)
 }
 
 #[cfg(test)]

@@ -22,8 +22,8 @@ and `contracts/`.
   mandate shape, matching, counters and the one-pending rule (§8.3, §9.1), shelf shares and the
   note rule (§9.3), typed template fields (§9.2), monotonic risk evaluation with the S12
   no-flag rule.
-- Threat model to tests. Every SP-1 to SP-21 has at least one CA; every CA-1 to CA-47 has a test
-  `caNN_*` in `crates/paseka-conformance/tests/attacks.rs`. 32 run and pass; 15 are ignored
+- Threat model to tests. Every SP-1 to SP-22 has at least one CA; every CA-1 to CA-50 has a test
+  `caNN_*` in `crates/paseka-conformance/tests/attacks.rs`. 36 run and pass; 14 are ignored
   with the missing part named. Every MVP DoD item names its checks.
 - Tooling. `python3 ci/broad_check.py` is green (fmt, clippy `-D warnings`, tests). `deny.toml`
   bans the async and heavy crates. Budget and reproducible-build scripts exist.
@@ -74,7 +74,7 @@ and `contracts/`.
 11. Defaults: prompt TTL 3600 s, `initData` window 300 s, closed mandate 60 s, envelope window
     7 days, retry horizon 72 h, 30 drafts per peer per hour, 20 pending drafts per tenant.
 12. Peer turns run as a separate agent invocation with its own launch profile (ADR 0011).
-13. Conformance attacks are numbered CA-1 to CA-47 and only appended; CA-47 (A1 approval of an
+13. Conformance attacks are numbered from CA-1 and only appended; CA-47 (A1 approval of an
     A2 request) was added to cover "a weaker channel never satisfies a stronger level".
 
 ## Open questions

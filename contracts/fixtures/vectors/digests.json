@@ -68,7 +68,7 @@
     }
   ],
   "signing_keys": {
-    "description": "Ed25519 seed = SHA-256('paseka test key <name>'); address = tenant id. Test only.",
+    "description": "Ed25519 seed = SHA-256('paseka test key <name>'); address = tenant id. alice-2 and alice-3 are alice's next keys. Test only.",
     "alice": {
       "seed_hex": "0a8a5ac2adc60913f7b8e49a0498bd03e79f090406065323ee16b4b5ef4d9191",
       "key_id": "ed25519:YM6rJ7zZ2l98CigfxePpz270jIk0mSfrMRnjzMm2TXc",
@@ -83,6 +83,16 @@
       "seed_hex": "18e27a299ee524119d4d6cee2c93b29acecf66765739e477b3132e5f9f0fe356",
       "key_id": "ed25519:0C8j-MbvIkEsv0Gz_a89zP5dzeb5dbhfnmd9r1zh8ts",
       "address": "t_01JD0000000000000000000003"
+    },
+    "alice-2": {
+      "seed_hex": "7349890731a883facd9860d45c8e4f3e2eff9fe33b50643beb642913167320c1",
+      "key_id": "ed25519:Ao7Z7sbUXdIVWp41lldyfOPXePkRyIIAs6lARUXI1uc",
+      "address": "t_01JD0000000000000000000001"
+    },
+    "alice-3": {
+      "seed_hex": "0bf01657068f7f1238291831a1af46eed4127ec953ee25482829a25f7e5341cb",
+      "key_id": "ed25519:gOc-YMh1YWD0M_TKDotn7AoIUhu2P0_MlZaOBCSKB3g",
+      "address": "t_01JD0000000000000000000001"
     }
   },
   "signed": {
@@ -169,9 +179,34 @@
         "request_id": "p_01JD0000000000000000000001",
         "request_sha256": "28039136b7afb140483a6a1d819738ff6355dc98ba3be804d3ddf17044003308",
         "endpoint": "https://gate.example.org/alice",
-        "iat": 1794268801
+        "iat": 1794268801,
+        "next_key_sha256": "d2d75b02792239da8512ea594e803a82480230c7f495c058c9cb0c736cf47a85"
       },
-      "compact": "eyJhbGciOiJFZERTQSIsImtpZCI6ImVkMjU1MTk6WU02cko3eloybDk4Q2lnZnhlUHB6MjcwaklrMG1TZnJNUm5qek1tMlRYYyIsInR5cCI6InBhc2VrYS1wYWlyK2p3dCJ9.eyJ2IjoxLCJ0eXBlIjoicGFpci5hY2NlcHQiLCJpZCI6InBfMDFKRDAwMDAwMDAwMDAwMDAwMDAwMDAwMDIiLCJpc3MiOiJ0XzAxSkQwMDAwMDAwMDAwMDAwMDAwMDAwMDAxIiwiYXVkIjoidF8wMUpEMDAwMDAwMDAwMDAwMDAwMDAwMDAwMiIsImtleSI6ImVkMjU1MTk6WU02cko3eloybDk4Q2lnZnhlUHB6MjcwaklrMG1TZnJNUm5qek1tMlRYYyIsInJlcXVlc3RfaWQiOiJwXzAxSkQwMDAwMDAwMDAwMDAwMDAwMDAwMDAxIiwicmVxdWVzdF9zaGEyNTYiOiIyODAzOTEzNmI3YWZiMTQwNDgzYTZhMWQ4MTk3MzhmZjYzNTVkYzk4YmEzYmU4MDRkM2RkZjE3MDQ0MDAzMzA4IiwiZW5kcG9pbnQiOiJodHRwczovL2dhdGUuZXhhbXBsZS5vcmcvYWxpY2UiLCJpYXQiOjE3OTQyNjg4MDF9.wQ2aiQ_MuFmyMxNuNm0aZhIkcMBKg84cTDgmG-95dIQmp1aXBgUy3mgcfendGX7UeNfzS---Cy3Gde5kd707BA"
+      "compact": "eyJhbGciOiJFZERTQSIsImtpZCI6ImVkMjU1MTk6WU02cko3eloybDk4Q2lnZnhlUHB6MjcwaklrMG1TZnJNUm5qek1tMlRYYyIsInR5cCI6InBhc2VrYS1wYWlyK2p3dCJ9.eyJ2IjoxLCJ0eXBlIjoicGFpci5hY2NlcHQiLCJpZCI6InBfMDFKRDAwMDAwMDAwMDAwMDAwMDAwMDAwMDIiLCJpc3MiOiJ0XzAxSkQwMDAwMDAwMDAwMDAwMDAwMDAwMDAxIiwiYXVkIjoidF8wMUpEMDAwMDAwMDAwMDAwMDAwMDAwMDAwMiIsImtleSI6ImVkMjU1MTk6WU02cko3eloybDk4Q2lnZnhlUHB6MjcwaklrMG1TZnJNUm5qek1tMlRYYyIsInJlcXVlc3RfaWQiOiJwXzAxSkQwMDAwMDAwMDAwMDAwMDAwMDAwMDAxIiwicmVxdWVzdF9zaGEyNTYiOiIyODAzOTEzNmI3YWZiMTQwNDgzYTZhMWQ4MTk3MzhmZjYzNTVkYzk4YmEzYmU4MDRkM2RkZjE3MDQ0MDAzMzA4IiwiZW5kcG9pbnQiOiJodHRwczovL2dhdGUuZXhhbXBsZS5vcmcvYWxpY2UiLCJpYXQiOjE3OTQyNjg4MDEsIm5leHRfa2V5X3NoYTI1NiI6ImQyZDc1YjAyNzkyMjM5ZGE4NTEyZWE1OTRlODAzYTgyNDgwMjMwYzdmNDk1YzA1OGM5Y2IwYzczNmNmNDdhODUifQ.A2FKkY-TnuR-Op1ICNB9GJddbu_H4jwI27VfNmNLE14ABu69_ILECHS0K4YziGdA1beKEg2yxRVVZaHDowFGCw"
+    },
+    "key_rotate": {
+      "payload": {
+        "v": 1,
+        "iss": "t_01JD0000000000000000000001",
+        "aud": "t_01JD0000000000000000000002",
+        "id": "e_01JD0000000000000000000003",
+        "type": "key.rotate",
+        "iat": 1794272430,
+        "data": {
+          "new_key": "ed25519:Ao7Z7sbUXdIVWp41lldyfOPXePkRyIIAs6lARUXI1uc",
+          "next_key_sha256": "830967ea47b18b8f49eac0d660f18e3ed5da9b6bf2ccb69c29d3cbca82a0630c",
+          "previous_valid_until": 1794877230,
+          "proof": "eyJhbGciOiJFZERTQSIsImtpZCI6ImVkMjU1MTk6QW83WjdzYlVYZElWV3A0MWxsZHlmT1BYZVBrUnlJSUFzNmxBUlVYSTF1YyIsInR5cCI6InBhc2VrYS1rZXktcHJvb2Yrand0In0.eyJ2IjoxLCJpc3MiOiJ0XzAxSkQwMDAwMDAwMDAwMDAwMDAwMDAwMDAxIiwibmV3X2tleSI6ImVkMjU1MTk6QW83WjdzYlVYZElWV3A0MWxsZHlmT1BYZVBrUnlJSUFzNmxBUlVYSTF1YyIsIm5leHRfa2V5X3NoYTI1NiI6IjgzMDk2N2VhNDdiMThiOGY0OWVhYzBkNjYwZjE4ZTNlZDVkYTliNmJmMmNjYjY5YzI5ZDNjYmNhODJhMDYzMGMiLCJwcmV2aW91c192YWxpZF91bnRpbCI6MTc5NDg3NzIzMH0.BoW8YDD2X9gq4vrYrQEeRx3fv-q4JiADkSEe5ovCUE2LdiY9QOJRbEpTTm0AsZvu_e6PlIRYcuZTtIkLTUE5Cw"
+        }
+      },
+      "proof_payload": {
+        "v": 1,
+        "iss": "t_01JD0000000000000000000001",
+        "new_key": "ed25519:Ao7Z7sbUXdIVWp41lldyfOPXePkRyIIAs6lARUXI1uc",
+        "next_key_sha256": "830967ea47b18b8f49eac0d660f18e3ed5da9b6bf2ccb69c29d3cbca82a0630c",
+        "previous_valid_until": 1794877230
+      },
+      "compact": "eyJhbGciOiJFZERTQSIsImtpZCI6ImVkMjU1MTk6WU02cko3eloybDk4Q2lnZnhlUHB6MjcwaklrMG1TZnJNUm5qek1tMlRYYyIsInR5cCI6InBhc2VrYS1lbnZlbG9wZStqd3QifQ.eyJ2IjoxLCJpc3MiOiJ0XzAxSkQwMDAwMDAwMDAwMDAwMDAwMDAwMDAxIiwiYXVkIjoidF8wMUpEMDAwMDAwMDAwMDAwMDAwMDAwMDAwMiIsImlkIjoiZV8wMUpEMDAwMDAwMDAwMDAwMDAwMDAwMDAwMyIsInR5cGUiOiJrZXkucm90YXRlIiwiaWF0IjoxNzk0MjcyNDMwLCJkYXRhIjp7Im5ld19rZXkiOiJlZDI1NTE5OkFvN1o3c2JVWGRJVldwNDFsbGR5Zk9QWGVQa1J5SUlBczZsQVJVWEkxdWMiLCJuZXh0X2tleV9zaGEyNTYiOiI4MzA5NjdlYTQ3YjE4YjhmNDllYWMwZDY2MGYxOGUzZWQ1ZGE5YjZiZjJjY2I2OWMyOWQzY2JjYTgyYTA2MzBjIiwicHJldmlvdXNfdmFsaWRfdW50aWwiOjE3OTQ4NzcyMzAsInByb29mIjoiZXlKaGJHY2lPaUpGWkVSVFFTSXNJbXRwWkNJNkltVmtNalUxTVRrNlFXODNXamR6WWxWWVpFbFdWM0EwTVd4c1pIbG1UMUJZWlZCclVubEpTVUZ6Tm14QlVsVllTVEYxWXlJc0luUjVjQ0k2SW5CaGMyVnJZUzFyWlhrdGNISnZiMllyYW5kMEluMC5leUoySWpveExDSnBjM01pT2lKMFh6QXhTa1F3TURBd01EQXdNREF3TURBd01EQXdNREF3TURBeElpd2libVYzWDJ0bGVTSTZJbVZrTWpVMU1UazZRVzgzV2pkellsVllaRWxXVjNBME1XeHNaSGxtVDFCWVpWQnJVbmxKU1VGek5teEJVbFZZU1RGMVl5SXNJbTVsZUhSZmEyVjVYM05vWVRJMU5pSTZJamd6TURrMk4yVmhORGRpTVRoaU9HWTBPV1ZoWXpCa05qWXdaakU0WlRObFpEVmtZVGxpTm1KbU1tTmpZalk1WXpJNVpETmpZbU5oT0RKaE1EWXpNR01pTENKd2NtVjJhVzkxYzE5MllXeHBaRjkxYm5ScGJDSTZNVGM1TkRnM056SXpNSDAuQm9XOFlERDJYOWdxNHZyWXJRRWVSeDNmdi1xNEppQURrU0VlNW92Q1VFMkxkaVk5UU9KUmJFcFRUbTBBc1p2dV9lNlBsSVJZY3VaVHRJa0xUVUU1Q3cifX0.zNrYodeQzI_3lM-2aUU1mQQkny2-H57okVy_8CqINbYYVc1lP3VJBDbJFBPTEdC0PSzMo6mblib6qLR4-_mvBg"
     }
   }
 }

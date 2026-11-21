@@ -237,6 +237,19 @@ envelope happen in one transaction; delivery is at least once with receiver dedu
 - CA-46 Kill the gate between decision and delivery, restart. Result: exactly one envelope
   delivered, one inbox item at the peer.
 
+SP-22 Key continuity (ADR 0013). A peer address keeps its recorded key until a `key.rotate`
+signed by that key, with a proof by the new key that matches the commitment on record, replaces
+it, or the receiving owner confirms the change; a replaced key stays valid only until its
+`previous_valid_until`.
+- CA-48 Key substitution: a `key.rotate` whose proof is not signed by `new_key`
+  (`bad_signature`); recording an already recorded address with another key, or one of the
+  gate's own addresses as a peer (`conflict`). Result: the recorded key is unchanged.
+- CA-49 `key.rotate` signed by a key that is not the address's current key: a stranger's key, or
+  the previous key while still in its grace. Result: `bad_signature`; the record is unchanged.
+- CA-50 Use of the previous key once `previous_valid_until` is reached: an envelope signed with
+  it (`bad_signature`), and a mandate signed with it inside an envelope signed with the current
+  key (`mandate_invalid`). Result: rejected.
+
 Old attack ideas (ADR 0009). The consent-forgery suite CF-1 to CF-15 of the old gate maps to:
 CF-1, CF-6, CF-9 and CF-13 (agent-written approvals, proof fields, evidence) to CA-1, CA-2,
 CA-5 and CA-34; CF-2 (browser decision identity and binding) to CA-9, CA-14 and CA-16; CF-3

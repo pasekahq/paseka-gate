@@ -29,7 +29,8 @@
       "enum": [
         "message",
         "pair.confirmed",
-        "unpair"
+        "unpair",
+        "key.rotate"
       ]
     },
     "iat": {
@@ -101,6 +102,22 @@
                 "maxLength": 200
               }
             }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "key.rotate"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "$ref": "key-rotate.schema.json"
           }
         }
       }

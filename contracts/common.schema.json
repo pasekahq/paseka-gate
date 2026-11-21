@@ -206,6 +206,11 @@
       "type": "string",
       "pattern": "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+~$",
       "description": "Compact JWS followed by ~ (SD-JWT with zero disclosures)."
+    },
+    "jws": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$",
+      "description": "Compact JWS."
     }
   }
 }

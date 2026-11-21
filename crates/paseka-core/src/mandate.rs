@@ -1,13 +1,14 @@
 //! Closed mandates: issuance by the sending gate and verification by the receiving gate
 //! (PROTOCOL §8.2, §8.4).
 
-use ed25519_dalek::{SigningKey, VerifyingKey};
+use ed25519_dalek::SigningKey;
 use paseka_proto::envelope::{Envelope, MessageData};
 use paseka_proto::evidence::Channel;
 use paseka_proto::mandate::ClosedMandate;
 use paseka_proto::{Address, Level, MandateId, TenantId, UnixSecs};
 
 use crate::hash::{Release, content_sha256, release_digest, sha256};
+use crate::peer::PeerKeys;
 use crate::tenant::TenantMap;
 use crate::token::{self, TokenError};
 
@@ -97,20 +98,23 @@ impl JtiBook {
 }
 
 /// Verifies the mandate of a received `message` event (PROTOCOL §8.4); `sender` is the key
-/// recorded for the envelope `iss`. The caller records the returned mandate in the [`JtiBook`]
+/// record of the envelope `iss`, and the mandate must be signed by a key valid at `now`. The
+/// caller records the returned mandate in the [`JtiBook`]
 /// in the same transaction as the inbox item.
 ///
 /// # Errors
 /// [`MandateInvalid`] for the first failed check.
 pub fn verify_received(
     env: &Envelope<MessageData>,
-    sender: &VerifyingKey,
+    sender: &PeerKeys,
     receiver_tenant: &TenantId,
     jtis: &JtiBook,
     now: UnixSecs,
 ) -> Result<ClosedMandate, MandateInvalid> {
     let d = &env.data;
-    let payload = token::verify_mandate(&d.mandate, sender).map_err(MandateInvalid::Token)?;
+    let payload = sender
+        .verify_mandate(&d.mandate, now)
+        .map_err(MandateInvalid::Token)?;
     let m: ClosedMandate = serde_json::from_slice(&payload).map_err(|_| MandateInvalid::Payload)?;
     if m.iss != env.iss || m.to != env.aud || m.tenant.address() != m.iss {
         return Err(MandateInvalid::Addressing);
@@ -177,10 +181,11 @@ mod tests {
         let bob_tenant = TenantId::new("t_01JD0000000000000000000002").unwrap();
         let now = claims.iat + 1;
         let mut jtis = JtiBook::default();
-        let m = verify_received(&env, &alice.verifying_key(), &bob_tenant, &jtis, now).unwrap();
+        let alice_keys = PeerKeys::paired(alice.verifying_key(), None);
+        let m = verify_received(&env, &alice_keys, &bob_tenant, &jtis, now).unwrap();
         jtis.record(&bob_tenant, &m);
         assert_eq!(
-            verify_received(&env, &alice.verifying_key(), &bob_tenant, &jtis, now),
+            verify_received(&env, &alice_keys, &bob_tenant, &jtis, now),
             Err(MandateInvalid::Replay)
         );
     }
@@ -209,7 +214,7 @@ mod tests {
         assert_eq!(
             verify_received(
                 &env,
-                &alice.verifying_key(),
+                &PeerKeys::paired(alice.verifying_key(), None),
                 &bob_tenant,
                 &JtiBook::default(),
                 m.iat + 1

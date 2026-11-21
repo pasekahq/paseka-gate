@@ -32,7 +32,11 @@ pub enum Typ {
     /// Pairing message.
     #[serde(rename = "paseka-pair+jwt")]
     Pair,
+    /// Proof of possession of a new key in a `key.rotate` event.
+    #[serde(rename = "paseka-key-proof+jwt")]
+    KeyProof,
 }
+
 /// Upper bound on a compact token: the 6 MiB request limit of PROTOCOL §10.1.
 pub const MAX_TOKEN_BYTES: usize = 6 * 1024 * 1024;
 

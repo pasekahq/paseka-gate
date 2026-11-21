@@ -10,8 +10,8 @@ fn check(id: &str) {
 }
 
 #[test]
-fn attacks_are_numbered_ca_1_to_47_in_order() {
-    assert_eq!(ATTACKS.len(), 47);
+fn attacks_are_numbered_ca_1_to_50_in_order() {
+    assert_eq!(ATTACKS.len(), 50);
     for (i, a) in ATTACKS.iter().enumerate() {
         assert_eq!(a.id, format!("CA-{}", i + 1));
     }
@@ -264,4 +264,19 @@ fn ca46_gate_killed_between_decision_and() {
 #[test]
 fn ca47_weaker_channel() {
     check("CA-47");
+}
+
+#[test]
+fn ca48_key_substitution() {
+    check("CA-48");
+}
+
+#[test]
+fn ca49_rotation_not_by_current_key() {
+    check("CA-49");
+}
+
+#[test]
+fn ca50_previous_key_after_grace() {
+    check("CA-50");
 }
