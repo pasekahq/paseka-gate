@@ -31,9 +31,10 @@ test keys listed in the file. Each test key has a seed, SHA-256('paseka test key
 and an address, the tenant id. Ed25519 signatures are deterministic, so implementations MUST
 reproduce the compact strings exactly from the given claims serialization and seed.
 
-The file, the closed mandate inside the `wire/envelope` fixtures, the `key-rotate` and
-`key-revoke` fixtures of `wire/envelope`, the `wire/key-proof` and `wire/key-replacement`
-fixtures and `pairing/accept/invalid/key-id-as-next-key.json` are generated, never edited by
+The file, the closed mandate inside the `wire/envelope` fixtures, the `mandate/closed` and
+`evidence/telegram-button` fixtures, the `key-rotate` and `key-revoke` fixtures of
+`wire/envelope`, the `wire/key-proof` and `wire/key-replacement` fixtures and
+`pairing/accept/invalid/key-id-as-next-key.json` are generated, never edited by
 hand: `PASEKA_WRITE_VECTORS=1 cargo test -p paseka-core --lib vectors::` writes them from the
 seeds, and the same test without the variable fails when a file differs from what the generator
 writes.
@@ -92,6 +93,16 @@ Additive (ADR 0010, ADR 0013).
 - New schema `wire/key-replacement`, the payload of the replacement signature; JWS `typ` gains
   `paseka-key-replacement+jwt`.
 - `fixtures/vectors/digests.json` gains `key_change_sas` and a signed `key.revoke`.
+
+### Version 1: draft expiry in the release digest
+
+Made in place in v1 before any release or deployed peer (ADR 0014).
+
+- `mandate/closed` gains the required claim `expires`, the draft expiry in Unix seconds.
+- The release digest uses the domain string `paseka/release/v2` and binds `u64be(expires)`
+  after `in_reply_to` (PROTOCOL §3.2).
+- `fixtures/vectors/digests.json` adds `expires` to the release digest inputs; every digest,
+  challenge, evidence hash and signed mandate that depends on it is regenerated.
 
 ## Tolerant readers
 

@@ -1,7 +1,7 @@
 //! Generator of `contracts/fixtures/vectors/digests.json`, of the closed mandate inside the
-//! `wire/envelope` fixtures, of the `key.rotate`, `key.revoke`, `wire/key-proof` and
-//! `wire/key-replacement` fixtures, and of the `pairing/accept` fixture with a malformed
-//! commitment, from the synthetic seeds.
+//! `wire/envelope` fixtures, of the `mandate/closed` and `evidence/telegram-button` fixtures, of
+//! the `key.rotate`, `key.revoke`, `wire/key-proof` and `wire/key-replacement` fixtures, and of
+//! the `pairing/accept` fixture with a malformed commitment, from the synthetic seeds.
 //!
 //! `cargo test -p paseka-core --lib vectors::` fails unless those files are exactly the
 //! generator's output; with `PASEKA_WRITE_VECTORS=1` it rewrites them instead.
@@ -14,6 +14,7 @@ use ed25519_dalek::SigningKey;
 use serde::Serialize;
 use serde_json::Value;
 
+use crate::draft::{DRAFT_LIFETIME_DEFAULT, DRAFT_LIFETIME_RANGE, draft_expires};
 use crate::envelope::seal;
 use crate::hash::{
     Release, approval_challenge, content_sha256, key_change_sas, release_digest, sas, sha256,
@@ -56,6 +57,7 @@ struct ReleaseInput {
     to: Address,
     thread: ThreadId,
     in_reply_to: Option<EventId>,
+    expires: UnixSecs,
     body: String,
     body_utf8_hex: String,
     attachments: Vec<WireAttachment>,
@@ -164,6 +166,8 @@ struct SignedKeyRevoke {
 
 #[derive(Serialize)]
 struct Signed {
+    #[serde(skip)]
+    evidence: TelegramButtonEvidence,
     evidence_bytes_utf8: String,
     closed_mandate: SignedClaims<ClosedMandate>,
     envelope: SignedEnvelope,
@@ -234,8 +238,8 @@ fn attachment(name: &str, media_type: &str, bytes: &[u8]) -> WireAttachment {
 fn release_vector(
     from: &Party,
     to: &Party,
-    thread: ThreadId,
-    in_reply_to: Option<EventId>,
+    (thread, in_reply_to): (ThreadId, Option<EventId>),
+    expires: UnixSecs,
     body: &str,
     attachments: Vec<WireAttachment>,
 ) -> ReleaseVector {
@@ -247,6 +251,7 @@ fn release_vector(
         to: to.address(),
         thread,
         in_reply_to,
+        expires,
         body: body.into(),
         body_utf8_hex: hex(body.as_bytes()),
         attachments,
@@ -257,6 +262,7 @@ fn release_vector(
         to: &input.to,
         thread: &input.thread,
         in_reply_to: input.in_reply_to.as_ref(),
+        expires: input.expires,
         content_sha256: content,
         attachments: &metas,
     });
@@ -274,12 +280,19 @@ fn generate() -> Vectors {
         Party::new("carol", 3),
     );
     let (alice_2, alice_3) = (Party::new("alice-2", 1), Party::new("alice-3", 1));
-    let first = release_vector(&alice, &bob, thread(1), Some(event(1)), BODY, vec![]);
+    let first = release_vector(
+        &alice,
+        &bob,
+        (thread(1), Some(event(1))),
+        draft_expires(AT - 600, DRAFT_LIFETIME_DEFAULT).expect("default lifetime"),
+        BODY,
+        vec![],
+    );
     let second = release_vector(
         &bob,
         &carol,
-        thread(2),
-        None,
+        (thread(2), None),
+        draft_expires(AT, *DRAFT_LIFETIME_RANGE.start()).expect("shortest lifetime"),
         "Привет, carol! Notes attached ✓",
         vec![
             attachment("notes.md", "text/markdown", b"# Notes\n\nShelf section.\n"),
@@ -347,8 +360,8 @@ fn generate() -> Vectors {
     }
 }
 
-fn evidence(alice: &Party, challenge: &ChallengeVector) -> String {
-    let evidence = TelegramButtonEvidence {
+fn evidence(alice: &Party, challenge: &ChallengeVector) -> TelegramButtonEvidence {
+    TelegramButtonEvidence {
         v: 1,
         channel: Channel::TelegramButton,
         level: Level::A1,
@@ -366,8 +379,7 @@ fn evidence(alice: &Party, challenge: &ChallengeVector) -> String {
         approver_user_id: 2_000_001,
         callback_query_id: "4200000000000000001".into(),
         update_id: 900_001,
-    };
-    serde_json::to_string(&evidence).expect("evidence serialises")
+    }
 }
 
 /// bob's request and alice's accept, which commits to `alice_next`.
@@ -487,7 +499,8 @@ fn signed(
     challenge: &ChallengeVector,
     code: Nonce,
 ) -> Signed {
-    let evidence_bytes = evidence(alice, challenge);
+    let evidence = evidence(alice, challenge);
+    let evidence_bytes = serde_json::to_string(&evidence).expect("evidence serialises");
     let i = &release.input;
     let claims = ClosedMandate {
         v: V1,
@@ -501,6 +514,7 @@ fn signed(
         nonce: challenge.input.nonce.clone(),
         thread: i.thread.clone(),
         in_reply_to: i.in_reply_to.clone(),
+        expires: i.expires,
         content_sha256: release.content_sha256,
         attachments: vec![],
         release_digest: release.release_digest,
@@ -542,6 +556,7 @@ fn signed(
     };
     let (pair_request, pair_accept) = pairing_messages(alice, bob, alice_next, code);
     Signed {
+        evidence,
         evidence_bytes_utf8: evidence_bytes,
         closed_mandate: SignedClaims {
             claims,
@@ -571,8 +586,14 @@ fn sign<T: Serialize>(key: &SigningKey, typ: Typ, payload: &T) -> String {
     )
 }
 
+fn fixtures(dir: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../contracts/fixtures")
+        .join(dir)
+}
+
 fn wire_fixtures() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../contracts/fixtures/wire")
+    fixtures("wire")
 }
 
 fn json_file<T: Serialize>(value: &T) -> String {
@@ -672,11 +693,136 @@ fn key_revoke_fixtures(k: &SignedKeyRevoke) -> Vec<(PathBuf, String)> {
 fn pair_accept_fixtures(accept: &PairAccept) -> Vec<(PathBuf, String)> {
     let mut key_as_next = serde_json::to_value(accept).expect("accept serialises");
     key_as_next["next_key_sha256"] = accept.key.as_str().into();
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../contracts/fixtures/pairing/accept");
+    let dir = fixtures("pairing/accept");
     vec![(
         dir.join("invalid/key-id-as-next-key.json"),
         json_file(&key_as_next),
     )]
+}
+
+/// The `mandate/closed` fixtures: the signed closed mandate's claims, an A0 variant, and one
+/// broken claim per invalid case. `attachment` fills the nine-attachment case and `key` the
+/// recipient that is a key id instead of an address.
+fn closed_mandate_fixtures(
+    m: &ClosedMandate,
+    attachment: &AttachmentMeta,
+    key: &KeyId,
+) -> Vec<(PathBuf, String)> {
+    let dir = fixtures("mandate/closed");
+    let a0 = ClosedMandate {
+        level: Level::A0,
+        proof: ClosedProof {
+            channel: Channel::OpenMandate,
+            evidence_sha256: Sha256([0xab; 32]),
+            open_mandate: Some(MandateId::new(ulid("md_", 9)).expect("fixture id")),
+            ..m.proof.clone()
+        },
+        ..m.clone()
+    };
+    let a0_without_open = ClosedMandate {
+        proof: ClosedProof {
+            open_mandate: None,
+            ..a0.proof.clone()
+        },
+        ..a0.clone()
+    };
+    let a1_open_channel = ClosedMandate {
+        proof: ClosedProof {
+            channel: Channel::OpenMandate,
+            ..m.proof.clone()
+        },
+        ..m.clone()
+    };
+    let nine = ClosedMandate {
+        attachments: vec![attachment.clone(); 9],
+        ..m.clone()
+    };
+    let claims = serde_json::to_value(m).expect("claims serialise");
+    let edited = |edit: &dyn Fn(&mut serde_json::Map<String, Value>)| {
+        let mut v = claims.clone();
+        edit(v.as_object_mut().expect("claims are an object"));
+        json_file(&v)
+    };
+    let mut key_as_to = serde_json::to_value(&a0).expect("claims serialise");
+    key_as_to["to"] = key.as_str().into();
+    vec![
+        (dir.join("valid/a1-button.json"), json_file(m)),
+        (dir.join("valid/a0-open-mandate.json"), json_file(&a0)),
+        (
+            dir.join("valid/unknown-claim-tolerated.json"),
+            edited(&|c| {
+                c.insert("x_future".into(), serde_json::json!({"any": 1}));
+            }),
+        ),
+        (
+            dir.join("invalid/a0-without-open-mandate.json"),
+            json_file(&a0_without_open),
+        ),
+        (
+            dir.join("invalid/a1-with-open-mandate-channel.json"),
+            json_file(&a1_open_channel),
+        ),
+        (
+            dir.join("invalid/key-id-as-recipient.json"),
+            json_file(&key_as_to),
+        ),
+        (
+            dir.join("invalid/kind-open.json"),
+            edited(&|c| {
+                c.insert("kind".into(), "open".into());
+            }),
+        ),
+        (
+            dir.join("invalid/missing-content-sha256.json"),
+            edited(&|c| {
+                c.remove("content_sha256");
+            }),
+        ),
+        (
+            dir.join("invalid/missing-expires.json"),
+            edited(&|c| {
+                c.remove("expires");
+            }),
+        ),
+        (dir.join("invalid/nine-attachments.json"), json_file(&nine)),
+        (
+            dir.join("invalid/unknown-level.json"),
+            edited(&|c| {
+                c.insert("level".into(), "A9".into());
+            }),
+        ),
+        (
+            dir.join("invalid/uppercase-hash.json"),
+            edited(&|c| {
+                c.insert(
+                    "content_sha256".into(),
+                    m.content_sha256.to_hex().to_uppercase().into(),
+                );
+            }),
+        ),
+    ]
+}
+
+/// The `evidence/telegram-button` fixtures: the evidence the signed closed mandate's
+/// `evidence_sha256` covers, and one broken field per invalid case.
+fn telegram_button_fixtures(e: &TelegramButtonEvidence) -> Vec<(PathBuf, String)> {
+    let dir = fixtures("evidence/telegram-button");
+    let value = serde_json::to_value(e).expect("evidence serialises");
+    let mut level_a2 = value.clone();
+    level_a2["level"] = "A2".into();
+    let mut no_approver = value;
+    no_approver
+        .as_object_mut()
+        .expect("evidence is an object")
+        .remove("approver_user_id");
+    vec![
+        (dir.join("valid/approve.json"), json_file(e)),
+        (dir.join("invalid/level-a2.json"), json_file(&level_a2)),
+        (
+            dir.join("invalid/missing-approver.json"),
+            json_file(&no_approver),
+        ),
+    ]
 }
 
 /// `text` of an envelope fixture with its `data.mandate`, if any, replaced by `mandate`; a
@@ -701,6 +847,12 @@ fn outputs() -> Vec<(PathBuf, String)> {
     out.extend(key_rotate_fixtures(&vectors.signed.key_rotate));
     out.extend(key_revoke_fixtures(&vectors.signed.key_revoke));
     out.extend(pair_accept_fixtures(&vectors.signed.pair_accept.payload));
+    out.extend(closed_mandate_fixtures(
+        &vectors.signed.closed_mandate.claims,
+        &vectors.release_digest[1].input.attachments[0].meta,
+        &vectors.signing_keys.bob.key_id,
+    ));
+    out.extend(telegram_button_fixtures(&vectors.signed.evidence));
     for dir in ["valid", "invalid"] {
         let fixtures = wire_fixtures().join("envelope").join(dir);
         for entry in std::fs::read_dir(fixtures).expect("fixture dir") {

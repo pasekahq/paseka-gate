@@ -66,13 +66,14 @@ exported through any interface.
 
 ### 3.2 Release digest
 
-The release digest binds what leaves to where it goes:
+The release digest binds what leaves, where it goes and until when the draft may leave:
 
 ```
 release_digest = SHA-256(
-  frame("paseka/release/v1") ||
+  frame("paseka/release/v2") ||
   frame(tenant) || frame(iss) || frame(to) ||
   frame(thread) || frame(in_reply_to or "") ||
+  u64be(expires) ||
   content_sha256 (32 raw bytes) ||
   u32be(n) ||
   for each attachment in order:
@@ -80,8 +81,21 @@ release_digest = SHA-256(
 )
 ```
 
-`tenant` is the sending tenant; `iss` and `to` are the addresses of the sending and receiving
-tenant, so `iss` equals `tenant`. `in_reply_to` is an event id or empty. Implementations MUST pass the vectors in `contracts/fixtures/vectors/digests.json`.
+Inputs, in this order:
+
+- `tenant`: the sending tenant id;
+- `iss` and `to`: the addresses of the sending and receiving tenant, so `iss` equals `tenant`;
+- `thread`: the thread id;
+- `in_reply_to`: the event id answered, or the empty string;
+- `expires`: the draft expiry (§4), Unix seconds, as 8 bytes big-endian;
+- `content_sha256`: SHA-256 of the body (§3.1);
+- `n`: the number of attachments, then each attachment's `name`, `media_type`, `size` and
+  `sha256` in attachment order.
+
+The suffix of the domain string numbers the digest composition, not the protocol version.
+The receiver recomputes the digest from the event and the closed mandate's `tenant` and
+`expires` (§8.4). Implementations MUST pass the vectors in
+`contracts/fixtures/vectors/digests.json`.
 
 ### 3.3 Approval challenge
 
@@ -98,13 +112,21 @@ approval_challenge = SHA-256(
 ```
 
 `level` is the required level string (`A1`, `A2`, `A2+`, `A3`). A3 and A2+ channels sign these
-32 bytes; A1 and A2 evidence records them.
+32 bytes; A1 and A2 evidence records them. Through `release_digest` the challenge also binds the
+draft `expires`, so the owner approves the draft's lifetime with its content.
 
 ## 4. Drafts
 
 A draft is a candidate outbound message created by `propose` or `share`. It has revisions
 numbered from 1. Each revision has its own body, attachments, release digest, evaluated level
 and, while it awaits consent, one approval request (request id, nonce, challenge).
+
+Every draft has an expiry `expires = created_at + lifetime`, fixed at creation and bound into the
+release digest of every revision (§3.2). The lifetime is an owner setting from 300 s (5 min) to
+604800 s (7 days), default 43200 s (12 h); in code `DRAFT_LIFETIME_RANGE` and
+`DRAFT_LIFETIME_DEFAULT` in `paseka_core::draft`. A prompt never outlives the draft: a request's
+`expires_at` is at most `expires`. The gate issues no closed mandate for a draft at or after
+`expires`, also not for a retry; a draft not yet released moves to `expired` then.
 
 ### 4.1 States
 
@@ -114,7 +136,7 @@ and, while it awaits consent, one approval request (request id, nonce, challenge
 | `approved` | A mandate is issued; release not yet committed | no |
 | `released` | The envelope is committed to the outbox | yes |
 | `denied` | The owner refused | yes |
-| `expired` | The prompt TTL or the mandate `exp` passed | yes |
+| `expired` | The prompt TTL, the mandate `exp` or the draft `expires` passed | yes |
 | `withdrawn` | The agent withdrew it | yes |
 | `blocked` | Policy forbids release (canary, unavailable level, hard rule) | yes |
 
@@ -129,11 +151,11 @@ Transitions:
 | `awaiting_consent` | owner approves the current request | `approved` |
 | `awaiting_consent` | owner edits and approves | `approved` (new revision authored by the owner) |
 | `awaiting_consent` | owner denies | `denied` |
-| `awaiting_consent` | prompt TTL passes | `expired` |
+| `awaiting_consent` | prompt TTL or draft `expires` passes | `expired` |
 | `awaiting_consent` | agent `withdraw` | `withdrawn` |
 | `awaiting_consent` | re-evaluation after an owner edit blocks | `blocked` |
-| `approved` | outbox commit at or before mandate `exp` | `released` |
-| `approved` | mandate `exp` passes without commit | `expired` |
+| `approved` | outbox commit at or before mandate `exp` and before draft `expires` | `released` |
+| `approved` | mandate `exp` or draft `expires` passes without commit | `expired` |
 
 The gate MUST perform "consume nonce, issue mandate, commit outbox envelope, move to `released`"
 in one database transaction (SP-21). `approved` is then observable only on failure paths.
@@ -286,7 +308,8 @@ Rules:
 When a revision enters `awaiting_consent` the gate creates one approval request:
 `{tenant, request_id, draft_id, revision, release_digest, level, nonce, challenge, issued_at,
 expires_at}`. The nonce comes from the OS CSPRNG. The prompt TTL defaults to 3600 s (owner
-setting, 300 to 86400 s). A new revision, withdrawal, denial or expiry revokes the request.
+setting, 300 to 86400 s); `expires_at` is `issued_at` plus the TTL, capped at the draft
+`expires` (§4). A new revision, withdrawal, denial or expiry revokes the request.
 A decision is accepted only when all hold:
 
 1. the request belongs to the tenant resolved from the channel (§12), is unrevoked, unexpired and
@@ -415,13 +438,14 @@ with Telegram's attestation as evidence; from A2+ the owner's own key signs the 
 ### 8.2 Closed mandate
 
 Claims (`contracts/mandate/closed.schema.json`): `v`, `kind: "closed"`, `iss` (sender address,
-equal to `tenant`), `tenant`, `to` (recipient address), `jti`, `iat`, `exp`, `nonce`, `thread`, `in_reply_to`,
-`content_sha256`, `attachments` (metadata in order), `release_digest`, `level`, `proof`
-(`channel`, `approved_at`, `evidence_sha256`, optional `open_mandate` (jti of the open mandate
-for A0), optional `evidence` (publicly verifiable evidence, A3 only)).
+equal to `tenant`), `tenant`, `to` (recipient address), `jti`, `iat`, `exp`, `nonce`, `thread`,
+`in_reply_to`, `expires` (the draft expiry, §4), `content_sha256`, `attachments` (metadata in
+order), `release_digest`, `level`, `proof` (`channel`, `approved_at`, `evidence_sha256`,
+optional `open_mandate` (jti of the open mandate for A0), optional `evidence` (publicly
+verifiable evidence, A3 only)).
 
-Issuance: `exp = iat + 60`. The nonce is the consumed request nonce, or for A0 a fresh nonce.
-The `jti` is unique. The gate issues a closed mandate for every release, including A0 releases
+Issuance: `exp = iat + 60` and `iat < expires`. The nonce is the consumed request nonce, or for
+A0 a fresh nonce. The `jti` is unique. The gate issues a closed mandate for every release, including A0 releases
 under an open mandate, so every `message` envelope carries exactly one closed mandate.
 
 ### 8.3 Open mandate
@@ -457,11 +481,13 @@ For each `message` event the receiver MUST verify the mandate (SP-14) and reject
 3. `content_sha256` equals SHA-256 of the event body; `attachments` metadata equals the event
    attachments in order and each `sha256` matches the transmitted bytes;
 4. `thread` and `in_reply_to` equal those of the event;
-5. `release_digest` equals the digest recomputed from the mandate `tenant` and the event (§3.2);
+5. `release_digest` equals the digest recomputed from the mandate `tenant` and `expires` and the
+   event (§3.2);
 6. `iat <= event iat <= exp`, `exp - iat <= 60`, and `iat <= now + 300`;
-7. `level` and `proof.channel` are known and consistent (§6.3); with `proof.evidence` present the
+7. `iat < expires`: the mandate was issued while the draft was alive;
+8. `level` and `proof.channel` are known and consistent (§6.3); with `proof.evidence` present the
    receiver verifies it;
-8. the `jti` was never accepted before from this `iss` address (`mandate_replay` otherwise).
+9. the `jti` was never accepted before from this `iss` address (`mandate_replay` otherwise).
 
 The receiver shows the sender's level and channel with the inbox item.
 

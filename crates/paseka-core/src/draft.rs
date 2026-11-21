@@ -2,7 +2,10 @@
 //!
 //! Every revision gets its own approval request; a new revision, withdrawal, denial or expiry
 //! revokes it. A decision is accepted only for the live request of the current revision, with
-//! the stored release digest, through a channel strong enough for the required level.
+//! the stored release digest, through a channel strong enough for the required level. A draft
+//! lives until its `expires`; no prompt and no mandate outlive it.
+
+use std::ops::RangeInclusive;
 
 use paseka_proto::draft::{DraftKind, DraftState, Reason};
 use paseka_proto::evidence::{Channel, Decision};
@@ -83,6 +86,8 @@ pub struct Draft {
     pub request: Option<ApprovalRequest>,
     /// Creation time.
     pub created_at: UnixSecs,
+    /// End of the draft lifetime, bound into every release digest ([`draft_expires`]).
+    pub expires: UnixSecs,
     /// Last change.
     pub updated_at: UnixSecs,
 }
@@ -150,6 +155,27 @@ pub struct Approved {
 /// Prompt TTL bounds and default (PROTOCOL §7.1).
 pub const PROMPT_TTL_DEFAULT: u64 = 3600;
 
+/// Default draft lifetime (PROTOCOL §4): 12 h.
+pub const DRAFT_LIFETIME_DEFAULT: u64 = 12 * 3600;
+/// Allowed owner settings of the draft lifetime (PROTOCOL §4): 5 min to 7 days.
+pub const DRAFT_LIFETIME_RANGE: RangeInclusive<u64> = 300..=7 * 86_400;
+
+/// A draft lifetime setting outside [`DRAFT_LIFETIME_RANGE`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LifetimeOutOfRange(pub u64);
+
+/// `expires` of a draft created at `created_at` under the owner's lifetime setting `lifetime`.
+///
+/// # Errors
+/// [`LifetimeOutOfRange`] unless `lifetime` is in [`DRAFT_LIFETIME_RANGE`].
+pub fn draft_expires(created_at: UnixSecs, lifetime: u64) -> Result<UnixSecs, LifetimeOutOfRange> {
+    if DRAFT_LIFETIME_RANGE.contains(&lifetime) {
+        Ok(created_at.saturating_add(lifetime))
+    } else {
+        Err(LifetimeOutOfRange(lifetime))
+    }
+}
+
 impl Draft {
     fn open_request(&mut self, level: Level, seed: RequestSeed, now: UnixSecs, ttl: u64) {
         let challenge = approval_challenge(
@@ -166,7 +192,7 @@ impl Draft {
             level,
             challenge,
             issued_at: now,
-            expires_at: now.saturating_add(ttl),
+            expires_at: now.saturating_add(ttl).min(self.expires),
         });
         self.state = DraftState::AwaitingConsent;
     }
@@ -239,11 +265,17 @@ impl Draft {
         Ok(())
     }
 
-    /// Prompt TTL or mandate expiry.
+    /// Whether the gate may issue a closed mandate for this draft at `now`: approved, or released
+    /// and re-issuing for a retry, and before `expires`.
+    pub fn may_issue_mandate(&self, now: UnixSecs) -> bool {
+        matches!(self.state, DraftState::Approved | DraftState::Released) && now < self.expires
+    }
+
+    /// Prompt TTL, mandate expiry or the end of the draft lifetime.
     pub fn expire(&mut self, now: UnixSecs) {
         let due = match self.state {
             DraftState::AwaitingConsent => {
-                self.request.as_ref().is_none_or(|r| now >= r.expires_at)
+                now >= self.expires || self.request.as_ref().is_none_or(|r| now >= r.expires_at)
             }
             DraftState::Approved => true,
             _ => false,
@@ -334,11 +366,14 @@ impl Draft {
         }
     }
 
-    /// Outbox commit of an approved draft.
+    /// Outbox commit of an approved draft; at or after `expires` the draft expires instead.
     ///
     /// # Errors
-    /// [`DraftError::InvalidState`] unless the draft is `approved`.
+    /// [`DraftError::InvalidState`] unless the draft is `approved` and alive.
     pub fn release(&mut self, now: UnixSecs) -> Result<(), DraftError> {
+        if self.state == DraftState::Approved && now >= self.expires {
+            self.expire(now);
+        }
         if self.state != DraftState::Approved {
             return Err(DraftError::InvalidState(self.state));
         }
@@ -383,6 +418,7 @@ mod tests {
             reason: None,
             request: None,
             created_at: 0,
+            expires: 1000,
             updated_at: 0,
         };
         d.evaluated(
@@ -514,5 +550,59 @@ mod tests {
             (d.state, d.reason),
             (DraftState::Blocked, Some(Reason::Policy))
         );
+    }
+
+    #[test]
+    fn the_lifetime_setting_is_bounded() {
+        let (lo, hi) = (*DRAFT_LIFETIME_RANGE.start(), *DRAFT_LIFETIME_RANGE.end());
+        assert_eq!(draft_expires(1000, lo), Ok(1300));
+        assert_eq!(draft_expires(1000, hi), Ok(1000 + 604_800));
+        assert!(draft_expires(1000, DRAFT_LIFETIME_DEFAULT).is_ok());
+        for bad in [0, lo - 1, hi + 1] {
+            assert_eq!(draft_expires(1000, bad), Err(LifetimeOutOfRange(bad)));
+        }
+    }
+
+    #[test]
+    fn no_prompt_outlives_the_draft() {
+        let mut d = awaiting(Level::A1);
+        d.expires = 50;
+        d.revise(1, rev("hi!"), 20).unwrap();
+        d.evaluated(
+            Required::Level(Level::A1),
+            Channel::TelegramMiniApp,
+            seed(2),
+            20,
+            100,
+        );
+        let snap = d.clone();
+        assert_eq!(
+            d.decide(&attempt(&snap, Channel::TelegramButton), 50),
+            Err(DecisionError::Expired)
+        );
+        d.expire(50);
+        assert_eq!(
+            (d.state, d.reason),
+            (DraftState::Expired, Some(Reason::Timeout))
+        );
+    }
+
+    #[test]
+    fn no_mandate_is_issued_at_or_after_expires() {
+        let snap = awaiting(Level::A1);
+        let mut d = snap.clone();
+        d.decide(&attempt(&snap, Channel::TelegramButton), 20)
+            .unwrap();
+        assert!(d.may_issue_mandate(999));
+        assert!(!d.may_issue_mandate(1000));
+        let mut late = d.clone();
+        assert_eq!(
+            late.release(1000),
+            Err(DraftError::InvalidState(DraftState::Expired))
+        );
+        assert!(!late.may_issue_mandate(1000));
+        d.release(999).unwrap();
+        assert!(d.may_issue_mandate(999));
+        assert!(!d.may_issue_mandate(1000));
     }
 }

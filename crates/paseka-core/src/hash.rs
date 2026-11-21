@@ -3,7 +3,9 @@
 //! with `sha256sum` from what the approval screen showed.
 
 use paseka_proto::mandate::AttachmentMeta;
-use paseka_proto::{Address, EventId, KeyId, Level, Nonce, RequestId, Sha256, TenantId, ThreadId};
+use paseka_proto::{
+    Address, EventId, KeyId, Level, Nonce, RequestId, Sha256, TenantId, ThreadId, UnixSecs,
+};
 use sha2::Digest as _;
 
 /// SHA-256 of `bytes`.
@@ -35,6 +37,8 @@ pub struct Release<'a> {
     pub thread: &'a ThreadId,
     /// Event answered, if any.
     pub in_reply_to: Option<&'a EventId>,
+    /// Expiry of the draft.
+    pub expires: UnixSecs,
     /// SHA-256 of the body.
     pub content_sha256: Sha256,
     /// Attachment metadata in order.
@@ -47,12 +51,13 @@ pub struct Release<'a> {
 /// Never for valid content: at most 8 attachments.
 pub fn release_digest(r: &Release<'_>) -> Sha256 {
     let mut h = sha2::Sha256::new();
-    frame(&mut h, b"paseka/release/v1");
+    frame(&mut h, b"paseka/release/v2");
     frame(&mut h, r.tenant.as_str().as_bytes());
     frame(&mut h, r.iss.as_str().as_bytes());
     frame(&mut h, r.to.as_str().as_bytes());
     frame(&mut h, r.thread.as_str().as_bytes());
     frame(&mut h, r.in_reply_to.map_or("", EventId::as_str).as_bytes());
+    h.update(r.expires.to_be_bytes());
     h.update(r.content_sha256.0);
     let n = u32::try_from(r.attachments.len()).expect("at most 8 attachments");
     h.update(n.to_be_bytes());
@@ -157,6 +162,7 @@ mod tests {
                 to: &s(&i["to"]),
                 thread: &s(&i["thread"]),
                 in_reply_to: in_reply_to.as_ref(),
+                expires: s(&i["expires"]),
                 content_sha256: content,
                 attachments: &attachments,
             };

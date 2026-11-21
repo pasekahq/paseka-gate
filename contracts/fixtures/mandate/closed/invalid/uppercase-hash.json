@@ -1,22 +1,23 @@
 {
-  "v": 1,
-  "kind": "closed",
-  "iss": "t_01JD0000000000000000000001",
-  "tenant": "t_01JD0000000000000000000001",
-  "to": "t_01JD0000000000000000000002",
-  "jti": "md_01JD0000000000000000000001",
-  "iat": 1794268830,
-  "exp": 1794268890,
-  "nonce": "AAECAwQFBgcICQoLDA0ODw",
-  "thread": "th_01JD0000000000000000000001",
-  "in_reply_to": "e_01JD0000000000000000000001",
-  "content_sha256": "ABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABAB",
   "attachments": [],
-  "release_digest": "c1f37bc3c7ab8f622dc1861e949fcc62c3d860111050b6c2163a654ac35d5d2a",
+  "content_sha256": "2C96BDD5224CDBB28BA000AB47F6B661BE3980664A4DE4B4DFDD2C1FD7B57BF1",
+  "exp": 1794268890,
+  "expires": 1794311430,
+  "iat": 1794268830,
+  "in_reply_to": "e_01JD0000000000000000000001",
+  "iss": "t_01JD0000000000000000000001",
+  "jti": "md_01JD0000000000000000000001",
+  "kind": "closed",
   "level": "A1",
+  "nonce": "AAECAwQFBgcICQoLDA0ODw",
   "proof": {
-    "channel": "telegram-button",
     "approved_at": 1794268830,
-    "evidence_sha256": "b93459b77ee8d66d857d27d76d733d447337537fe1f6fd76b1680f28bfdf6959"
-  }
+    "channel": "telegram-button",
+    "evidence_sha256": "1d3558765abdedc28f1ab6cb40b0ae054279e9e5a8a9bee25fe12d807ee2f6bd"
+  },
+  "release_digest": "99e28f940142d0d4756222eb786ad39064902b3e8fe8cb6bc553442bedd35d39",
+  "tenant": "t_01JD0000000000000000000001",
+  "thread": "th_01JD0000000000000000000001",
+  "to": "t_01JD0000000000000000000002",
+  "v": 1
 }
