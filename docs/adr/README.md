@@ -5,7 +5,7 @@ One file per decision: `NNNN-short-title.md`, numbered in order, never renumbere
 ```
 # NNNN. Title
 
-Status: Proposed | Accepted | Superseded by NNNN
+Status: Proposed | Accepted | Recommendation | Superseded by NNNN
 Date: YYYY-MM-DD
 
 ## Context
@@ -15,7 +15,8 @@ Date: YYYY-MM-DD
 
 An ADR is required for: a new crate, a new dependency, a contract change that is not purely
 additive, and any deviation from `docs/concept/CONCEPT.md`. A superseded ADR stays; its Status line
-points to the successor.
+points to the successor. A Recommendation describes guidance the gate cannot verify; it binds
+what the gate records and shows, not how the agent is set up.
 
 | ADR | Decision |
 |---|---|
@@ -29,7 +30,7 @@ points to the successor.
 | [0008](0008-self-host-and-verification-chain.md) | Self-host is the main path; a five-step verification chain |
 | [0009](0009-clean-slate.md) | Clean slate: no compatibility with the old Python gate |
 | [0010](0010-tolerant-readers.md) | Contracts only grow; readers are tolerant |
-| [0011](0011-peer-turn-launch-profile.md) | Peer turns run under a separate agent launch profile |
+| [0011](0011-peer-turn-launch-profile.md) | Peer-turn protection levels are a recommendation the gate records and shows |
 | [0012](0012-mandate-encoding-gate-signed-sd-jwt.md) | Mandates are gate-signed SD-JWTs with zero disclosures; evidence stays behind a hash |
 | [0013](0013-tenant-address-and-key-rotation.md) | A tenant's address is its permanent id; keys rotate under it |
 | [0014](0014-release-digest-binds-draft-expiry.md) | The release digest binds the draft expiry; the closed mandate carries it |

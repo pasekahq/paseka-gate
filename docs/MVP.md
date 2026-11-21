@@ -19,7 +19,9 @@ their agents exchange answers that leave only with consent (A1, A2) or under an 
 - Trust levels T0, T1, T2 (shelves).
 - Conformance attack suite runnable as `paseka conformance`.
 - Reproducible release with CI-only publishing and provenance; install skill; first-run ceremony.
-- Connect recipes for ulei, Hermes, Claude Code and Codex at L1 and L2.
+- Connect recipes for ulei, Hermes, Claude Code and Codex at L1, L2 (separate run started by the
+  owner's scheduler) and L3 (OS restrictions); the owner records each agent's level in the Mini
+  App and the gate shows it (PROTOCOL §5.4).
 
 ## Definition of Done
 
@@ -48,7 +50,7 @@ Each item is done when the stated check passes. "CA" means a named conformance a
 | d18 | A rebuild from the tag with `ci/repro-build.sh` reproduces the released binary hash; the release carries Sigstore provenance with a Rekor entry. | CI job rebuilding on a second runner; `cosign verify-blob-attestation`. |
 | d19 | The audit checklist answers each question with a file:line reference that exists at the tag. | CI script checking every reference resolves. |
 | d20 | An agent following `skills/install/SKILL.md` on a clean host reaches a running gate with steps 1 to 5 passed and a self-check reporting green. | Manual dry run by the owner with one agent, recorded in the release notes. |
-| d21 | Alice's agent (Claude Code, L2 recipe) asks Bob's agent (ulei or Hermes) a question; Bob approves in the Mini App; Alice's agent reads the answer from its inbox. | End-to-end manual scenario on two test gates, example.org names. |
+| d21 | Alice's agent (Claude Code, L2 recipe) asks Bob's agent (ulei or Hermes) a question; Bob's approval prompt shows the level recorded for Bob's agent; Bob approves in the Mini App; Alice's agent reads the answer from its inbox. | End-to-end manual scenario on two test gates, example.org names. |
 | d22 | `/version` reports the build hash; a hosted tenant can export its journal and migrate to a self-host gate with one command. | Integration test of `export` and `import`. |
 
 ## Source coverage
@@ -83,7 +85,8 @@ get the S2 flag, which is not a registry source.
 - T3 free text on allowed topics, with digest, spike alerts and kill switch.
 - Fuzzy checks: embedding similarity and a classifier via qb (raise only).
 - Gate-side MCP proxy of the owner's MCP servers for verified sources; ulei taint integration.
-- L3 dual-model recipes.
+- Dual-model recipes (a quarantined model turns peer text into a structured question); not a
+  protection level.
 - `paseka peer-turn` runner (ADR 0011).
 - cargo-vet audits; pip and npm wrappers; `cargo install`; public GitHub releases.
 
@@ -102,7 +105,9 @@ get the S2 flag, which is not a registry source.
    outside the database, the missing-pepper error and recovery through the local CLI) and the
    ceremony offering the PIN kind default for the tenant's deployment; PIN change through
    consent with the old PIN and through the local CLI; the attempt limit wired to the owner
-   notice. Covers d7, d8, d16.
+   notice. Registered agents with their protection levels (PROTOCOL §5.4): the owner records the
+   level when adding an agent and changes it at A2; every approval prompt, the agent view and
+   the peer view show it, with the permanent L1 marker. Covers d7, d8, d16.
 4. M4 Peers: identity keys, pairing by deep link, signed envelopes, retry, behind Caddy; key
    change and revocation in the gate and Mini App (PROTOCOL §10.6 to §10.8): the owner starts
    them through consent with PIN or password, the gate sends `key.rotate` or `key.revoke` to

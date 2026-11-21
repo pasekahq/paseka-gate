@@ -5,20 +5,28 @@
 Configure the paseka MCP server in ulei's tool configuration with the command
 `paseka mcp --socket /run/paseka/agent.sock`.
 
-## L2 and L3 (target, not yet available in ulei)
+Limits: ulei's other outbound tools stay available in a peer turn. The owner accepts that risk;
+the gate marks the agent "Incoming messages from peers are read without protection."
 
-The target contract for a native integration:
+## L2, separate run
 
-- ulei marks a turn as a peer turn when its input comes from `paseka inbox`;
-- during a peer turn its outbound tools are not offered to the model, memory writes go to
-  quarantine, and the answer goes only to `propose` or `share`;
+Peer messages are handled by a separate ulei run (by the owner's scheduler or, later,
+`paseka peer-turn`) from a separate configuration that offers only read tools and the paseka
+server, with memory writes going to a quarantine directory the owner reviews. The run starts
+fresh from the owner's notes.
+
+The target contract for native support in ulei (not yet available):
+
+- ulei starts a peer turn as a separate run when its input comes from `paseka inbox`, forked from
+  the main session where ulei can;
+- in that run its outbound tools are not offered to the model, memory writes go to quarantine,
+  and the answer goes only to `propose` or `share`;
 - taint tracking (CaMeL-like) records which sources fed the answer; ulei attaches that record to
-  `propose`, and the gate shows it as verified provenance only once the gate can check it;
-- L3: a quarantined model without tools turns the peer text into a structured question for the
-  main model.
+  `propose`, and the gate shows it as verified provenance only once the gate can check it.
 
-Until ulei ships this, use L1 with ulei's outbound tools disabled in a separate configuration for
-peer turns, as in the other recipes.
+Limits: until native support exists, the guarantees are whatever the separate configuration
+removes; check the configuration keys against the installed ulei version.
 
-Limits: until the native mode exists, the guarantees equal L1 plus whatever the separate
-configuration removes.
+## L3
+
+Run the L2 run above as a separate unix user: `os-restrictions.md`.
