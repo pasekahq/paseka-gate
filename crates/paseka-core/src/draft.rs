@@ -103,7 +103,8 @@ pub enum DraftError {
     InvalidState(DraftState),
     /// `revision_conflict`.
     RevisionConflict,
-    /// `rate_limited`; the limit is for the owner, never for the agent.
+    /// `rate_limited`: a draft limit refused the new draft. The agent receives only the code;
+    /// which [`DraftLimit`] was reached is shown to the owner alone.
     RateLimited(DraftLimit),
 }
 
