@@ -46,6 +46,9 @@ pub struct PairRequest {
     pub name_hint: String,
     /// Creation time.
     pub iat: UnixSecs,
+    /// SHA-256 of the signer's next public key, its first rotation commitment.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_key_sha256: Option<Sha256>,
 }
 
 /// Inviter to invitee: the code was consumed; the inviter's owner still has to confirm.
@@ -72,4 +75,7 @@ pub struct PairAccept {
     pub endpoint: String,
     /// Creation time.
     pub iat: UnixSecs,
+    /// SHA-256 of the signer's next public key, its first rotation commitment.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_key_sha256: Option<Sha256>,
 }

@@ -101,6 +101,9 @@ attacks! {
     "CA-45" "SP-20" "one journal row modified in the database" => || Outcome::Pending(NEEDS_JOURNAL);
     "CA-46" "SP-21" "gate killed between decision and delivery" => || Outcome::Pending(NEEDS_SERVER);
     "CA-47" "SP-7" "A1 button approval for a request that needs A2" => consent::ca47_weaker_channel;
+    "CA-48" "SP-22" "key substitution: rotation proof not by new_key, recorded address re-paired with another key" => wire::ca48_key_substitution;
+    "CA-49" "SP-22" "key.rotate signed by a key that is not the address's current key" => wire::ca49_rotation_not_by_current_key;
+    "CA-50" "SP-22" "peer's previous key used after previous_valid_until" => wire::ca50_previous_key_after_grace;
 }
 
 /// Runs every attack.

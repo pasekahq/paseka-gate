@@ -1,0 +1,13 @@
+{
+  "aud": "t_01JD0000000000000000000002",
+  "data": {
+    "new_key": "ed25519:Ao7Z7sbUXdIVWp41lldyfOPXePkRyIIAs6lARUXI1uc",
+    "next_key_sha256": "830967ea47b18b8f49eac0d660f18e3ed5da9b6bf2ccb69c29d3cbca82a0630c",
+    "previous_valid_until": 1794877230
+  },
+  "iat": 1794272430,
+  "id": "e_01JD0000000000000000000003",
+  "iss": "t_01JD0000000000000000000001",
+  "type": "key.rotate",
+  "v": 1
+}

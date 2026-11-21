@@ -20,7 +20,8 @@
         "paseka-mandate+sd-jwt",
         "paseka-envelope+jwt",
         "paseka-receipt+jwt",
-        "paseka-pair+jwt"
+        "paseka-pair+jwt",
+        "paseka-key-proof+jwt"
       ]
     }
   },

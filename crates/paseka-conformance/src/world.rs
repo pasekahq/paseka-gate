@@ -7,10 +7,11 @@ use paseka_core::draft::{DecisionAttempt, Draft, RequestSeed, Revision};
 use paseka_core::envelope::{PeerState, Receiver, seal};
 use paseka_core::hash::{Release, content_sha256, release_digest, sha256};
 use paseka_core::mandate::{self, CLOSED_TTL_SECS};
+use paseka_core::peer::{Grace, PeerKeys, key_rotate_data, key_sha256};
 use paseka_core::risk::Required;
 use paseka_core::token::key_id;
 use paseka_proto::draft::{DraftKind, DraftState};
-use paseka_proto::envelope::{Envelope, EventType, MessageData, WireAttachment};
+use paseka_proto::envelope::{Envelope, EventType, KeyRotateData, MessageData, WireAttachment};
 use paseka_proto::evidence::{Channel, Decision};
 use paseka_proto::mandate::{AttachmentMeta, ClosedKind, ClosedMandate, ClosedProof};
 use paseka_proto::{
@@ -125,7 +126,13 @@ pub(crate) fn approve(d: &Draft, channel: Channel) -> DecisionAttempt<'_> {
     }
 }
 
-/// Gate-to-gate setup: bob's gate receives from alice.
+/// Seed of the key alice's pairing committed to.
+pub(crate) const ALICE_NEXT: u8 = 4;
+/// Seed of the key alice commits to when she rotates to [`ALICE_NEXT`].
+pub(crate) const ALICE_AFTER_NEXT: u8 = 5;
+
+/// Gate-to-gate setup: bob's gate receives from alice, whose pairing committed to
+/// [`ALICE_NEXT`].
 pub(crate) struct Wire {
     pub(crate) recv: Receiver,
     pub(crate) alice: SigningKey,
@@ -136,12 +143,12 @@ impl Wire {
         let alice = key(1);
         let mut recv = Receiver::default();
         recv.add_tenant(tenant(2));
-        recv.set_peer(
-            &tenant(2),
-            address(1),
+        let keys = PeerKeys::paired(
             alice.verifying_key(),
-            PeerState::Active,
+            Some(key_sha256(&key(ALICE_NEXT).verifying_key())),
         );
+        recv.add_peer(&tenant(2), address(1), keys, PeerState::Active)
+            .expect("bob records alice");
         Self { recv, alice }
     }
 }
@@ -229,4 +236,33 @@ pub(crate) fn message(
 /// Seals `env` with `signer`.
 pub(crate) fn sealed(signer: &SigningKey, env: &Envelope<MessageData>) -> String {
     seal(signer, env)
+}
+
+/// Grace alice grants her replaced key: one day.
+pub(crate) fn grace() -> Grace {
+    Grace::days(1).expect("one day is a valid grace")
+}
+
+/// alice's `key.rotate` to bob created at [`NOW`], sealed by `signer`: it names key `new`, its
+/// proof is signed by key `proof_by`, and it commits to key `next`.
+pub(crate) fn rotation(signer: &SigningKey, new: u8, proof_by: u8, next: u8, id: u8) -> String {
+    let mut data: KeyRotateData = key_rotate_data(
+        &address(1),
+        &key(proof_by),
+        key_sha256(&key(next).verifying_key()),
+        grace().previous_valid_until(NOW),
+    );
+    data.new_key = kid(&key(new));
+    seal(
+        signer,
+        &Envelope {
+            v: V1,
+            iss: address(1),
+            aud: address(2),
+            id: event(id),
+            kind: EventType::KeyRotate,
+            iat: NOW,
+            data,
+        },
+    )
 }

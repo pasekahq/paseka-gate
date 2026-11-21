@@ -13,6 +13,7 @@ pub mod hash;
 pub mod mandate;
 pub mod open;
 pub mod pairing;
+pub mod peer;
 pub mod risk;
 pub mod shelf;
 pub mod template;

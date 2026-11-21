@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use ed25519_dalek::{SigningKey, VerifyingKey};
+use ed25519_dalek::SigningKey;
 use paseka_proto::envelope::{Envelope, Event, ReceiptStatus, WireErrorCode};
 use paseka_proto::jws::{Compact, JwsError, MAX_TOKEN_BYTES, Typ};
 use paseka_proto::{Address, EventId, Sha256, TenantId, UnixSecs};
@@ -10,6 +10,7 @@ use serde::Serialize;
 
 use crate::hash::sha256;
 use crate::mandate::{JtiBook, MandateInvalid, verify_received};
+use crate::peer::{PeerKeys, Rotation, RotationRefused};
 use crate::tenant::TenantMap;
 use crate::token;
 
@@ -36,6 +37,21 @@ pub enum PeerState {
     Active,
 }
 
+/// Why a peer cannot be recorded (PROTOCOL §11 step 4); answered as `conflict`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PeerConflict {
+    /// The address is one of this gate's own tenants.
+    OwnTenant,
+    /// The address is already recorded with another current key.
+    OtherKey,
+}
+
+#[derive(Debug, Clone)]
+struct Peer {
+    keys: PeerKeys,
+    state: PeerState,
+}
+
 /// An accepted envelope.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Accepted {
@@ -47,14 +63,16 @@ pub struct Accepted {
     pub status: ReceiptStatus,
     /// SHA-256 of the compact JWS bytes.
     pub envelope_sha256: Sha256,
+    /// What a stored `key.rotate` event did to the peer record; `None` for other events.
+    pub rotation: Option<Rotation>,
 }
 
-/// Receiver state: local tenants by address, paired peers with their recorded key, seen event
-/// ids and mandate ids.
+/// Receiver state: local tenants by address, paired peers with their key records, seen event ids
+/// and mandate ids.
 #[derive(Debug, Clone, Default)]
 pub struct Receiver {
     tenants: BTreeMap<Address, TenantId>,
-    peers: TenantMap<Address, (VerifyingKey, PeerState)>,
+    peers: TenantMap<Address, Peer>,
     seen: TenantMap<(Address, EventId), (Sha256, UnixSecs)>,
     jtis: JtiBook,
 }
@@ -79,22 +97,45 @@ impl Receiver {
         self.tenants.insert(tenant.address(), tenant);
     }
 
-    /// Records the peer `address` of `tenant` with its current `key`, in `state`.
-    pub fn set_peer(
+    /// Records the peer `address` of `tenant` with the key record pairing made, in `state`. An
+    /// address already recorded with the same current key keeps its record and takes `state`.
+    ///
+    /// # Errors
+    /// [`PeerConflict`] for one of this gate's tenants or an address recorded with another key.
+    pub fn add_peer(
         &mut self,
         tenant: &TenantId,
         address: Address,
-        key: VerifyingKey,
+        keys: PeerKeys,
         state: PeerState,
-    ) {
-        self.peers.insert(tenant, address, (key, state));
+    ) -> Result<(), PeerConflict> {
+        if self.tenants.contains_key(&address) {
+            return Err(PeerConflict::OwnTenant);
+        }
+        if let Some(peer) = self.peers.get_mut(tenant, &address) {
+            if peer.keys.current() != keys.current() {
+                return Err(PeerConflict::OtherKey);
+            }
+            peer.state = state;
+            return Ok(());
+        }
+        self.peers.insert(tenant, address, Peer { keys, state });
+        Ok(())
+    }
+
+    /// The key record of the peer `address` of `tenant`.
+    pub fn peer_keys(&self, tenant: &TenantId, address: &Address) -> Option<&PeerKeys> {
+        self.peers.get(tenant, address).map(|p| &p.keys)
     }
 
     /// Verifies and accepts one envelope in the order of PROTOCOL §10.3; the first failure
-    /// determines the error code.
+    /// determines the error code. A `key.rotate` event updates the peer record (§10.6).
     ///
     /// # Errors
     /// The [`WireErrorCode`] the gate answers with.
+    ///
+    /// # Panics
+    /// Never: the peer of a `key.rotate` event was looked up before.
     pub fn accept(&mut self, jws: &str, now: UnixSecs) -> Result<Accepted, WireErrorCode> {
         if jws.len() > MAX_TOKEN_BYTES {
             return Err(WireErrorCode::TooLarge);
@@ -105,7 +146,8 @@ impl Receiver {
         }
         let raw: RawHead =
             serde_json::from_slice(&c.payload).map_err(|_| WireErrorCode::Malformed)?;
-        if raw.v != 1 || !matches!(raw.kind.as_str(), "message" | "pair.confirmed" | "unpair") {
+        let known = ["message", "pair.confirmed", "unpair", "key.rotate"];
+        if raw.v != 1 || !known.contains(&raw.kind.as_str()) {
             return Err(WireErrorCode::Unsupported);
         }
         let event = Event::parse(&c.payload).map_err(|_| WireErrorCode::Malformed)?;
@@ -115,11 +157,14 @@ impl Receiver {
             .get(&head.aud)
             .cloned()
             .ok_or(WireErrorCode::NotPaired)?;
-        let (key, state) = *self
+        let peer = self
             .peers
             .get(&tenant, &head.iss)
+            .cloned()
             .ok_or(WireErrorCode::NotPaired)?;
-        token::verify(jws, Typ::Envelope, &key).map_err(|_| WireErrorCode::BadSignature)?;
+        peer.keys
+            .verify(jws, Typ::Envelope, now)
+            .map_err(|_| WireErrorCode::BadSignature)?;
         if head.iat > now.saturating_add(SKEW_SECS) {
             return Err(WireErrorCode::FromFuture);
         }
@@ -139,18 +184,37 @@ impl Receiver {
                 event: None,
                 status: ReceiptStatus::Duplicate,
                 envelope_sha256: digest,
+                rotation: None,
             });
         }
-        if state == PeerState::PendingOwner {
+        if peer.state == PeerState::PendingOwner {
             return Err(WireErrorCode::PairingPending);
         }
-        if let Event::Message(env) = &event {
-            let m = verify_received(env, &key, &tenant, &self.jtis, now).map_err(|e| match e {
-                MandateInvalid::Replay => WireErrorCode::MandateReplay,
-                _ => WireErrorCode::MandateInvalid,
-            })?;
-            self.jtis.prune(now);
-            self.jtis.record(&tenant, &m);
+        let mut rotation = None;
+        match &event {
+            Event::Message(env) => {
+                let m = verify_received(env, &peer.keys, &tenant, &self.jtis, now).map_err(
+                    |e| match e {
+                        MandateInvalid::Replay => WireErrorCode::MandateReplay,
+                        _ => WireErrorCode::MandateInvalid,
+                    },
+                )?;
+                self.jtis.prune(now);
+                self.jtis.record(&tenant, &m);
+            }
+            Event::KeyRotate(_) => {
+                let recorded = self
+                    .peers
+                    .get_mut(&tenant, &head.iss)
+                    .expect("the peer was looked up above");
+                rotation = Some(recorded.keys.rotate(jws).map_err(|e| match e {
+                    RotationRefused::Payload => WireErrorCode::Malformed,
+                    RotationRefused::NotCurrentKey(_) | RotationRefused::Proof => {
+                        WireErrorCode::BadSignature
+                    }
+                })?);
+            }
+            Event::PairConfirmed(_) | Event::Unpair(_) => {}
         }
         self.seen.insert(&tenant, id, (digest, now));
         Ok(Accepted {
@@ -158,16 +222,18 @@ impl Receiver {
             event: Some(event),
             status: ReceiptStatus::Accepted,
             envelope_sha256: digest,
+            rotation,
         })
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use paseka_proto::envelope::MessageData;
+    use paseka_proto::envelope::{KeyRotateData, MessageData};
+    use paseka_proto::pairing::PairAccept;
 
     use super::*;
-    use crate::testkit::{seed_key, vectors};
+    use crate::testkit::{address, seed_key, tenant, vectors};
 
     fn setup() -> (Receiver, String, Envelope<MessageData>, UnixSecs) {
         let v = vectors();
@@ -183,18 +249,20 @@ mod tests {
         let bob_tenant = TenantId::new("t_01JD0000000000000000000002").unwrap();
         let mut r = Receiver::default();
         r.add_tenant(bob_tenant.clone());
-        r.set_peer(
+        r.add_peer(
             &bob_tenant,
             env.iss.clone(),
-            alice.verifying_key(),
+            PeerKeys::paired(alice.verifying_key(), None),
             PeerState::Active,
-        );
-        r.set_peer(
+        )
+        .unwrap();
+        r.add_peer(
             &bob_tenant,
             Address::new("t_01JD0000000000000000000003").unwrap(),
-            carol.verifying_key(),
+            PeerKeys::paired(carol.verifying_key(), None),
             PeerState::Active,
-        );
+        )
+        .unwrap();
         let now = env.iat + 1;
         (r, jws, env, now)
     }
@@ -251,6 +319,57 @@ mod tests {
         assert_eq!(
             r.accept(&seal(&seed_key(&v, "alice"), &other_tenant), now),
             Err(WireErrorCode::NotPaired)
+        );
+    }
+
+    #[test]
+    fn a_recorded_address_keeps_its_key_and_an_own_tenant_address_is_no_peer() {
+        let v = vectors();
+        let (mut r, jws, _, now) = setup();
+        let (alice, carol) = (seed_key(&v, "alice"), seed_key(&v, "carol"));
+        let paired = |k: &SigningKey| PeerKeys::paired(k.verifying_key(), None);
+        assert_eq!(
+            r.add_peer(&tenant(2), address(1), paired(&carol), PeerState::Active),
+            Err(PeerConflict::OtherKey)
+        );
+        assert_eq!(
+            r.add_peer(&tenant(2), address(2), paired(&carol), PeerState::Active),
+            Err(PeerConflict::OwnTenant)
+        );
+        assert_eq!(r.peer_keys(&tenant(2), &address(1)), Some(&paired(&alice)));
+        r.add_peer(
+            &tenant(2),
+            address(1),
+            paired(&alice),
+            PeerState::PendingOwner,
+        )
+        .unwrap();
+        assert_eq!(r.accept(&jws, now), Err(WireErrorCode::PairingPending));
+    }
+
+    #[test]
+    fn the_vector_rotation_is_auto_accepted_under_the_vector_accept_commitment() {
+        let v = vectors();
+        let signed = &v["signed"];
+        let accept: PairAccept =
+            serde_json::from_value(signed["pair_accept"]["payload"].clone()).unwrap();
+        let rotate: Envelope<KeyRotateData> =
+            serde_json::from_value(signed["key_rotate"]["payload"].clone()).unwrap();
+        let alice = seed_key(&v, "alice");
+        let jws = seal(&alice, &rotate);
+        assert_eq!(jws, signed["key_rotate"]["compact"].as_str().unwrap());
+        let mut r = Receiver::default();
+        r.add_tenant(tenant(2));
+        let keys = PeerKeys::paired(alice.verifying_key(), accept.next_key_sha256);
+        r.add_peer(&tenant(2), accept.iss.clone(), keys, PeerState::Active)
+            .unwrap();
+        let got = r.accept(&jws, rotate.iat + 1).unwrap();
+        assert_eq!(got.rotation, Some(Rotation::Rotated));
+        let keys = r.peer_keys(&tenant(2), &accept.iss).unwrap();
+        assert_eq!(*keys.current(), seed_key(&v, "alice-2").verifying_key());
+        assert_eq!(
+            keys.previous(),
+            Some((alice.verifying_key(), rotate.data.previous_valid_until))
         );
     }
 }

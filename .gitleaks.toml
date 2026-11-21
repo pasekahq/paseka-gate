@@ -1,4 +1,4 @@
-# gitleaks config: the default rules plus one narrow exception.
+# gitleaks config: the default rules plus two narrow exceptions.
 # contracts/fixtures/ holds protocol test vectors: SD-JWT mandates and envelopes signed with
 # deterministic test keys (seed = SHA-256('paseka test key <name>'), see vectors/digests.json).
 # They look like JWTs by design; they carry no real credentials.
@@ -9,3 +9,12 @@ useDefault = true
 description = "Protocol test vectors signed with published test keys"
 targetRules = ["jwt"]
 paths = ['''^contracts/fixtures/''']
+
+# Rotation commitments (`next_key_sha256`) in the fixtures are SHA-256 hex digests of published
+# test keys; the field name makes them look like generic API keys.
+[[allowlists]]
+description = "SHA-256 commitments to published test keys in protocol test vectors"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^contracts/fixtures/''']
+regexes = ['''^[0-9a-f]{64}$''']

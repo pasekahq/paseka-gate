@@ -40,10 +40,13 @@ key, and stays the same across key rotation and migration. Every field that name
 towards a peer (`iss`, `aud`, `to`) holds an address.
 
 Each tenant has exactly one current Ed25519 identity key. Key ids appear only in JWS `kid` and in
-fields that name a key (`key` in pairing messages, `k` in the pair URI). A peer record holds the
-peer's address, endpoint and current key; key rotation and revocation follow ADR 0013. The same
-key signs envelopes, receipts, pairing messages and mandates; the JWS `typ` header separates the
-domains (§8.1). The private key MUST be readable only by the gate's unix
+fields that name a key (`key` in pairing messages, `k` in the pair URI, `new_key` in `key.rotate`).
+A peer record holds, per tenant and peer address: the endpoint, the current key, the commitment
+`next_key_sha256` to the peer's next key (absent until the peer sends one), the previous key with
+its `previous_valid_until`, and the pairing state. A key is valid for the peer at `now` when it is
+the current key, or the previous key while `now < previous_valid_until`. The recorded key changes
+only by rotation (§10.6); revocation follows ADR 0013. The same key signs envelopes, receipts,
+pairing messages and mandates; the JWS `typ` header separates the domains (§8.1). The private key MUST be readable only by the gate's unix
 user and MUST NOT be exported through any interface.
 
 ## 3. Content and digests
@@ -387,10 +390,11 @@ A mandate is an SD-JWT with zero disclosures: a compact JWS followed by `~`
 | `paseka-envelope+jwt` | gate-to-gate envelope (§10) |
 | `paseka-receipt+jwt` | delivery receipt (§10.5) |
 | `paseka-pair+jwt` | pairing message (§11) |
+| `paseka-key-proof+jwt` | proof of possession of a new key (§10.6) |
 
 Verifiers MUST: accept only `alg` `EdDSA` with an Ed25519 key; reject `crit`, `jwk`, `jku`,
-`x5u`, `x5c`; take the key only from local state (own key or the key recorded for a paired peer's
-address), never from the token; require `kid` to name that key and `typ` equal to the expected
+`x5u`, `x5c`; take the key only from local state (own key or a key valid now for a paired peer's
+address, §2), never from the token; require `kid` to name that key and `typ` equal to the expected
 type; reject
 any disclosure after the `~` and any `_sd` claim in version 1; verify the signature over the
 exact received ASCII of `<header>.<payload>`.
@@ -442,7 +446,7 @@ Rules:
 For each `message` event the receiver MUST verify the mandate (SP-14) and reject the event with
 `mandate_invalid` unless all hold:
 
-1. §8.1 checks with `typ` `paseka-mandate+sd-jwt` and `kid` naming the key recorded for the
+1. §8.1 checks with `typ` `paseka-mandate+sd-jwt` and `kid` naming a key valid now (§2) for the
    envelope `iss`;
 2. `kind` is `closed`; `iss` equals the envelope `iss` and `tenant`; `to` equals the envelope
    `aud`;
@@ -524,6 +528,7 @@ address), `id` (event id), `type`, `iat` (event creation time), `data` (per type
 | `message` | `thread`, `in_reply_to`, `body`, `attachments` (metadata plus `data` in b64u), `mandate` |
 | `pair.confirmed` | `request_id` (§11) |
 | `unpair` | `reason` (free text, at most 200 characters, shown to the owner) |
+| `key.rotate` | `new_key`, `next_key_sha256`, `previous_valid_until`, `proof` (§10.6) |
 
 The envelope is signed once, when the release commits to the outbox. Retries send the identical
 bytes. `envelope_sha256` is SHA-256 of the compact JWS ASCII bytes.
@@ -535,14 +540,14 @@ In order; the first failure determines the error:
 1. size limit, JWS syntax, header per §8.1 (`malformed`, `too_large`);
 2. `aud` is the address of a tenant of this gate and `iss` the address of a paired peer of that
    tenant (`not_paired`; the same response for an unknown tenant);
-3. `kid` names the key recorded for that peer, and the signature verifies with that key
+3. `kid` names a key valid now for that peer (§2), and the signature verifies with that key
    (`bad_signature` for either);
 4. `iat <= now + 300` (`from_future`) and `now - iat <= 604800` (`stale`);
 5. event id dedupe per `(tenant, iss, id)`: same `envelope_sha256` seen returns `200` with the
    stored receipt and status `duplicate`; a different one is `conflict`. Seen ids are kept for at
    least 604800 + 300 s;
 6. known `type` (`unsupported`); `data` valid (`malformed`);
-7. for `message`: §8.4; peer volume limits (`rate_limited`);
+7. for `message`: §8.4; for `key.rotate`: §10.6; peer volume limits (`rate_limited`);
 8. store the inbox item and the event id in one transaction, then answer with a signed receipt.
 
 ### 10.4 Retry
@@ -558,8 +563,8 @@ whose receipt does not verify counts as a failed attempt.
 A `200` response body is a JWS with `typ` `paseka-receipt+jwt` signed by the receiver
 (`contracts/wire/receipt.schema.json`): `v`, `iss` (receiver address), `aud` (sender address),
 `id` (event id),
-`envelope_sha256`, `received_at`, `status` (`accepted` or `duplicate`). The sender stores it
-as delivery proof.
+`envelope_sha256`, `received_at`, `status` (`accepted` or `duplicate`). The sender verifies it with
+a key valid now for the receiver's address (§2) and stores it as delivery proof.
 
 Errors are JSON `{"error": {"code", "message", "retryable"}}` with `Content-Type:
 application/json` (`contracts/wire/error.schema.json`). They are unsigned and serve only the
@@ -583,6 +588,45 @@ retry decision.
 | `internal` | 500 | yes |
 | `unavailable` | 503 | yes |
 
+### 10.6 Key rotation
+
+A tenant replaces its key by sending every active peer a `key.rotate` envelope signed with the
+key being replaced. Its `data` (`contracts/wire/key-rotate.schema.json`):
+
+- `new_key`: key id of the key that becomes current;
+- `next_key_sha256`: SHA-256 of the 32-byte public key that will follow `new_key`, the
+  pre-rotation commitment (ADR 0013);
+- `previous_valid_until`: `iat + N`, where N is the sender's grace;
+- `proof`: proof of possession of `new_key`, a compact JWS with header
+  `{"alg": "EdDSA", "kid": <new_key>, "typ": "paseka-key-proof+jwt"}` signed by `new_key`. Its
+  payload (`contracts/wire/key-proof.schema.json`) is `{v, iss, new_key, next_key_sha256,
+  previous_valid_until}`: `iss` is the envelope `iss`, the other fields equal those of `data`.
+
+The grace N defaults to 7 days, the envelope acceptance window of §10.3, and is an owner setting
+of 1 to 30 days (§9.4); in code `paseka_core::peer::DEFAULT_GRACE_DAYS` and
+`paseka_core::peer::GRACE_DAYS`. Pairing messages carry the first commitment (§11).
+
+After §10.3 steps 1 to 6 the receiver checks, in order:
+
+1. the envelope verifies with the current key of the `iss` address; the previous key does not
+   count, even in its grace (`bad_signature`);
+2. `new_key` names an Ed25519 public key (`malformed`);
+3. `proof` passes §8.1 with `typ` `paseka-key-proof+jwt` and the key `new_key`, and its payload
+   equals the envelope `iss` and the `new_key`, `next_key_sha256` and `previous_valid_until` of
+   `data` (`bad_signature`);
+4. if SHA-256 of the 32 bytes of `new_key` equals the `next_key_sha256` on record, it accepts the
+   rotation without asking its owner: the current key becomes the previous key with
+   `previous_valid_until = min(data.previous_valid_until, iat + 30 days)`, replacing any earlier
+   previous key; `new_key` becomes the current key; `data.next_key_sha256` becomes the
+   commitment on record;
+5. otherwise, with no commitment on record or a commitment to another key, the record does not
+   change: the current key keeps working, `new_key` is not accepted, and the change waits for the
+   receiving owner's confirmation (ADR 0013, "Change without a usable commitment").
+
+In cases 4 and 5 the event is stored and answered per §10.3 step 8. Once `now` reaches
+`previous_valid_until`, envelopes signed with the previous key fail with `bad_signature` and
+mandates signed with it with `mandate_invalid`.
+
 ## 11. Pairing
 
 Pairing exchanges tenant addresses, keys and endpoints between an inviter (alice) and an invitee
@@ -600,18 +644,21 @@ in pairing.
    approver to his consent bot). Bob's Mini App shows alice's endpoint host and key fingerprint;
    bob names the peer and consents at A2. Bob's gate POSTs to `<ep>/v1/pair` a JWS
    `paseka-pair+jwt` signed by bob's key: `{v, type: "pair.request", id, iss: bob address,
-   aud: a, key: bob key id, code, endpoint: bob endpoint, name_hint, iat}`.
+   aud: a, key: bob key id, code, endpoint: bob endpoint, name_hint, iat, next_key_sha256?}`,
+   where the optional `next_key_sha256` is bob's first rotation commitment (§10.6).
 4. Accept. Alice's gate verifies the signature with the key in `key`, whose id `kid` names
    (self-certifying), `aud` is the tenant that issued the code, `|now - iat| <= 300`, and
    consumes the code atomically (`invite_invalid` if unknown, used or expired). An `iss` that is
-   one of its own tenants or already recorded for another peer of that tenant is refused
-   (`conflict`). It stores bob's `key` for bob's address as a peer in state `pending_owner` and
-   answers `200` with a JWS signed by alice's key: `{v, type: "pair.accept", id, iss: alice
-   address, aud: bob address, key: alice key id, request_id, request_sha256, endpoint: alice
-   endpoint, iat}`.
+   one of its own tenants, or is already recorded for that tenant with another key, is refused
+   (`conflict`); a recorded key changes only by rotation (§10.6). It stores bob's `key` and
+   `next_key_sha256` for bob's address as a peer in state `pending_owner` and answers `200` with
+   a JWS signed by alice's key: `{v, type: "pair.accept", id, iss: alice address, aud: bob
+   address, key: alice key id, request_id, request_sha256, endpoint: alice endpoint, iat,
+   next_key_sha256?}`, with alice's first commitment.
 5. Bob's gate verifies the accept: `kid` names `k` from the URI and the signature verifies with
    it, `key` equals `k` and `iss` equals `a` (CA-37), `aud` is bob's address, `request_sha256` is
-   SHA-256 of the request JWS bytes. It stores key `k` for address `a` as an active T0 peer.
+   SHA-256 of the request JWS bytes. It stores key `k` and the accept's `next_key_sha256` for
+   address `a` as an active T0 peer, refusing `a` as in step 4.
 6. Alice's owner sees in the Mini App: bob's key fingerprint, endpoint host, name hint (marked as
    claimed by the peer), the Telegram user U who opened the invite, and the short authentication
    string. Alice consents at A2; the peer becomes active at T0. Alice's gate then sends bob an

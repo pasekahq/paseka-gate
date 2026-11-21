@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pasekahq.example.org/contracts/v1/wire/key-rotate.schema.json",
+  "title": "data of a key.rotate envelope, signed with the sender's current key",
+  "type": "object",
+  "required": [
+    "new_key",
+    "next_key_sha256",
+    "previous_valid_until",
+    "proof"
+  ],
+  "properties": {
+    "new_key": {
+      "$ref": "../common.schema.json#/$defs/key_id",
+      "description": "The key that becomes current."
+    },
+    "next_key_sha256": {
+      "$ref": "../common.schema.json#/$defs/sha256",
+      "description": "SHA-256 of the 32-byte public key that will follow new_key."
+    },
+    "previous_valid_until": {
+      "$ref": "../common.schema.json#/$defs/unix_time",
+      "description": "Until when the replaced key stays valid; receivers cap it at iat + 30 days."
+    },
+    "proof": {
+      "$ref": "../common.schema.json#/$defs/jws",
+      "description": "Proof of possession: JWS typ paseka-key-proof+jwt, kid new_key, payload per key-proof.schema.json."
+    }
+  }
+}

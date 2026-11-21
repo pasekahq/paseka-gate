@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::mandate::AttachmentMeta;
-use crate::{Address, EventId, PairingId, Sha256, ThreadId, UnixSecs, V1};
+use crate::{Address, EventId, KeyId, PairingId, Sha256, ThreadId, UnixSecs, V1};
 
 /// Envelope `type`. Authority-bearing: an unknown type is a parse error (`unsupported`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -18,6 +18,9 @@ pub enum EventType {
     /// The sender removed the peer.
     #[serde(rename = "unpair")]
     Unpair,
+    /// The sender rotated its key.
+    #[serde(rename = "key.rotate")]
+    KeyRotate,
 }
 
 /// Envelope payload with `data` of type `D`. Field order is the signed serialisation order.
@@ -97,6 +100,35 @@ pub struct UnpairData {
     pub reason: String,
 }
 
+/// `data` of a `key.rotate` event (PROTOCOL §10.6), signed with the sender's current key.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KeyRotateData {
+    /// The key that becomes current.
+    pub new_key: KeyId,
+    /// SHA-256 of the 32-byte public key that will follow `new_key`.
+    pub next_key_sha256: Sha256,
+    /// Until when the replaced key stays valid.
+    pub previous_valid_until: UnixSecs,
+    /// Proof of possession: a compact JWS `paseka-key-proof+jwt` over a [`KeyProof`], signed by
+    /// `new_key`.
+    pub proof: String,
+}
+
+/// Payload of a key proof: the rotation it proves, bound to the sender address.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KeyProof {
+    /// Contract version.
+    pub v: V1,
+    /// Sender address, the envelope `iss`.
+    pub iss: Address,
+    /// Equals `data.new_key`.
+    pub new_key: KeyId,
+    /// Equals `data.next_key_sha256`.
+    pub next_key_sha256: Sha256,
+    /// Equals `data.previous_valid_until`.
+    pub previous_valid_until: UnixSecs,
+}
+
 /// A parsed envelope payload.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Event {
@@ -106,6 +138,8 @@ pub enum Event {
     PairConfirmed(Envelope<PairConfirmedData>),
     /// `unpair`.
     Unpair(Envelope<UnpairData>),
+    /// `key.rotate`.
+    KeyRotate(Envelope<KeyRotateData>),
 }
 
 impl Event {
@@ -119,6 +153,7 @@ impl Event {
             EventType::Message => Self::Message(serde_json::from_slice(payload)?),
             EventType::PairConfirmed => Self::PairConfirmed(serde_json::from_slice(payload)?),
             EventType::Unpair => Self::Unpair(serde_json::from_slice(payload)?),
+            EventType::KeyRotate => Self::KeyRotate(serde_json::from_slice(payload)?),
         })
     }
 
@@ -138,6 +173,7 @@ impl Event {
             Self::Message(e) => h(e),
             Self::PairConfirmed(e) => h(e),
             Self::Unpair(e) => h(e),
+            Self::KeyRotate(e) => h(e),
         }
     }
 }
