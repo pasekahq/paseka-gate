@@ -21,6 +21,7 @@ pub mod shelf;
 pub mod template;
 pub mod tenant;
 pub mod token;
+pub mod tripwire;
 
 #[cfg(test)]
 pub(crate) mod testkit;

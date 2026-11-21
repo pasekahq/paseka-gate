@@ -1,12 +1,15 @@
-//! Attacks on the agent surface, risk evaluation, open mandates and shelves (SP-1, SP-7 to
-//! SP-11, SP-17).
+//! Attacks on the agent surface, risk evaluation, open mandates, shelves and tripwire mode
+//! (SP-1, SP-7 to SP-11, SP-17, SP-23).
 
 use std::collections::BTreeSet;
 
 use paseka_core::open::{Candidate, OpenBook, OpenDenied, SlotError};
-use paseka_core::risk::{self, OutputKind, OwnerRules, Required};
+use paseka_core::risk::{self, CanaryId, OutputKind, OwnerRules, Required};
 use paseka_core::shelf::{ShareError, Shelf, check_share};
 use paseka_core::template::field_ok;
+use paseka_core::tripwire::{
+    ClearAttempt, ClearError, McpWindow, ModeError, TripwireBook, TripwireMode,
+};
 use paseka_proto::draft::{DraftKind, DraftState};
 use paseka_proto::evidence::Channel;
 use paseka_proto::mandate::{AttachmentRule, Constraints, OpenKind, OpenMandate, OpenProof, Rate};
@@ -24,7 +27,8 @@ const APPROVAL_WORDS: [&str; 10] = [
 
 fn rules() -> OwnerRules {
     let mut r = OwnerRules::default();
-    r.add_canary(CANARY).expect("canary long enough");
+    r.add_canary(CanaryId(1), CANARY)
+        .expect("canary long enough");
     r
 }
 
@@ -374,4 +378,65 @@ pub(crate) fn ca41_over_prompt_capacity() -> Outcome {
         Required::Level(l) if l >= Level::A2 => Outcome::Pass,
         other => Outcome::Fail(format!("{} bytes at {other:?}", long.len())),
     }
+}
+
+pub(crate) fn ca53_clear_tripwire_without_pin() -> Outcome {
+    let body = format!("{BODY} {CANARY}");
+    let assessed = risk::assess(&rules(), &free(&body));
+    let d = draft(&body, assessed.required);
+    let mut book = TripwireBook::default();
+    let window = McpWindow {
+        from: NOW - 30,
+        until: NOW,
+    };
+    if book.canary_hit(&d, &assessed, window, NOW).is_none() || !book.in_effect(&d.tenant) {
+        return Outcome::Fail("setup: canary hit did not enter tripwire mode".into());
+    }
+    let req = match book.request_clear(&d.tenant, seed(2), NOW + 1, TTL) {
+        Ok(r) => r,
+        Err(e) => return Outcome::Fail(format!("setup: clear request refused: {e:?}")),
+    };
+    let by = |channel| ClearAttempt {
+        tenant: &d.tenant,
+        request_id: &req.request_id,
+        nonce: &req.nonce,
+        channel,
+        approver: true,
+    };
+    let mut out: Vec<Outcome> = [
+        Channel::TelegramButton,
+        Channel::TelegramMiniApp,
+        Channel::OpenMandate,
+    ]
+    .map(|c| {
+        expect(book.clear(&by(c), NOW + 2), |e| {
+            *e == ClearError::ChannelTooWeak
+        })
+    })
+    .into();
+    out.push(expect(
+        book.set_mode(
+            &d.tenant,
+            TripwireMode::DraftBlockOnly,
+            Channel::TelegramMiniApp,
+        ),
+        |e| *e == ModeError::TripwireActive,
+    ));
+    out.extend(
+        TOOL_NAMES
+            .into_iter()
+            .filter(|n| n.contains("tripwire") || n.contains("clear"))
+            .map(|n| Outcome::Fail(format!("agent tool {n} reaches tripwire mode"))),
+    );
+    out.push(expect(ToolCall::parse("clear_tripwire", b"{}"), |_| true));
+    if !book.in_effect(&d.tenant) {
+        out.push(Outcome::Fail("tripwire mode cleared without PIN".into()));
+    }
+    if book
+        .clear(&by(Channel::TelegramMiniAppPin), NOW + 3)
+        .is_err()
+    {
+        out.push(Outcome::Fail("a PIN decision did not clear".into()));
+    }
+    all(out)
 }
