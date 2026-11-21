@@ -1,11 +1,12 @@
-use paseka_proto::draft::{DraftKind, DraftState};
+use paseka_proto::draft::DraftState;
 
 use super::*;
 use crate::channel::Selection;
-use crate::draft::Revision;
 use crate::open::{OpenBook, OpenDenied};
-use crate::risk::{self, OutputKind, OwnerRules, Required};
-use crate::testkit::{address, cand, draft_id, mvp_channels, peer, seed, t1, tenant, thread, tpl};
+use crate::risk::{self, OwnerRules, Required};
+use crate::testkit::{
+    address, awaiting, cand, draft_id, free, mvp_channels, peer, seed, t1, tenant, thread, tpl,
+};
 
 const CANARY: &str = "PASEKA-CANARY-7f3a9c";
 const TTL: u64 = 100;
@@ -16,19 +17,6 @@ fn rules() -> OwnerRules {
     r
 }
 
-fn free(text: &str, tripwire: bool, open_mandate: bool) -> risk::Draft<'_> {
-    risk::Draft {
-        text,
-        kind: OutputKind::FreeText,
-        attachments: 0,
-        new_recipient: false,
-        sources: &[],
-        fuzzy_hint: None,
-        tripwire,
-        open_mandate,
-    }
-}
-
 fn window(i: u64) -> McpWindow {
     McpWindow {
         from: 100 * i,
@@ -36,31 +24,10 @@ fn window(i: u64) -> McpWindow {
     }
 }
 
-/// Tenant `t`'s draft `d` to bob with `body`, evaluated against [`rules`] at `now`.
+/// Tenant `t`'s draft `d` with `body`, evaluated against [`rules`] at `now`.
 fn evaluated(t: u8, d: u8, body: &str, now: UnixSecs) -> (Draft, Assessment) {
-    let mut draft = Draft {
-        tenant: tenant(t),
-        id: draft_id(d),
-        kind: DraftKind::FreeText,
-        to: peer("bob"),
-        thread: thread(1),
-        in_reply_to: None,
-        revision: 1,
-        current: Revision {
-            body: body.into(),
-            attachments: vec![],
-            release_digest: crate::hash::content_sha256(body),
-            by_owner: false,
-        },
-        state: DraftState::AwaitingConsent,
-        reason: None,
-        request: None,
-        created_at: now,
-        expires: now + 10_000,
-        updated_at: now,
-    };
-    let a = risk::assess(&rules(), &free(body, false, false));
-    draft.evaluated(a.required, &mvp_channels(), seed(d), now, TTL);
+    let a = risk::assess(&rules(), &free(body));
+    let draft = awaiting(t, d, body, now, now + 10_000, a.required, now);
     (draft, a)
 }
 
@@ -250,7 +217,14 @@ fn full_alarm_raises_every_draft_to_the_pin_channel_and_stops_open_mandates() {
         (CANARY, false, Required::Block),
     ];
     for (text, open_mandate, want) in cases {
-        let a = risk::assess(&rules(), &free(text, on, open_mandate));
+        let a = risk::assess(
+            &rules(),
+            &risk::Draft {
+                tripwire: on,
+                open_mandate,
+                ..free(text)
+            },
+        );
         assert_eq!(a.required, want, "{text}");
     }
     assert_eq!(
@@ -278,7 +252,14 @@ fn draft_block_only_blocks_the_draft_and_leaves_the_rest_alone() {
     assert_eq!(book.active(&tenant(1)), None);
     assert_eq!(open.matches(&m, &cand(&to, &tp, &th), on, 20), Ok(()));
     assert_eq!(
-        risk::assess(&rules(), &free("sounds good", on, false)).required,
+        risk::assess(
+            &rules(),
+            &risk::Draft {
+                tripwire: on,
+                ..free("sounds good")
+            }
+        )
+        .required,
         Required::Level(Level::A1)
     );
 }

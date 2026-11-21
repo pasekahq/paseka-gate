@@ -401,37 +401,7 @@ impl Draft {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testkit::{draft_id, mvp_channels, nonce, peer, seed, tenant, thread};
-
-    fn rev(body: &str) -> Revision {
-        Revision {
-            body: body.into(),
-            attachments: vec![],
-            release_digest: crate::hash::content_sha256(body),
-            by_owner: false,
-        }
-    }
-
-    fn awaiting(level: Level) -> Draft {
-        let mut d = Draft {
-            tenant: tenant(1),
-            id: draft_id(1),
-            kind: DraftKind::FreeText,
-            to: peer("bob"),
-            thread: thread(1),
-            in_reply_to: None,
-            revision: 1,
-            current: rev("hi"),
-            state: DraftState::AwaitingConsent,
-            reason: None,
-            request: None,
-            created_at: 0,
-            expires: 1000,
-            updated_at: 0,
-        };
-        d.evaluated(Required::Level(level), &mvp_channels(), seed(1), 10, 100);
-        d
-    }
+    use crate::testkit::{awaiting, mvp_channels, nonce, rev, seed, tenant};
 
     fn attempt(d: &Draft, channel: Channel) -> DecisionAttempt<'_> {
         let r = d.request.as_ref().unwrap();
@@ -448,7 +418,7 @@ mod tests {
 
     #[test]
     fn approval_consumes_the_request_once() {
-        let snap = awaiting(Level::A1);
+        let snap = awaiting(1, 1, "hi", 0, 1000, Required::Level(Level::A1), 10);
         let mut d = snap.clone();
         let a = attempt(&snap, Channel::TelegramButton);
         assert!(d.decide(&a, 20).unwrap().is_some());
@@ -458,7 +428,7 @@ mod tests {
 
     #[test]
     fn revise_revokes_the_old_request_and_checks_the_revision() {
-        let mut d = awaiting(Level::A1);
+        let mut d = awaiting(1, 1, "hi", 0, 1000, Required::Level(Level::A1), 10);
         let old = d.request.clone().unwrap();
         assert_eq!(
             d.revise(2, rev("hi!"), 11),
@@ -483,7 +453,7 @@ mod tests {
 
     #[test]
     fn decisions_fail_closed_on_every_check() {
-        let d = awaiting(Level::A2);
+        let d = awaiting(1, 1, "hi", 0, 1000, Required::Level(Level::A2), 10);
         let other = tenant(2);
         let cases: [(DecisionAttempt<'_>, DecisionError); 5] = [
             (
@@ -531,7 +501,7 @@ mod tests {
 
     #[test]
     fn approved_drafts_cannot_be_revised_or_withdrawn() {
-        let snap = awaiting(Level::A1);
+        let snap = awaiting(1, 1, "hi", 0, 1000, Required::Level(Level::A1), 10);
         let mut d = snap.clone();
         d.decide(&attempt(&snap, Channel::TelegramButton), 20)
             .unwrap();
@@ -547,7 +517,7 @@ mod tests {
 
     #[test]
     fn a_level_above_every_channel_goes_through_the_strongest_marked() {
-        let d = awaiting(Level::A3);
+        let d = awaiting(1, 1, "hi", 0, 1000, Required::Level(Level::A3), 10);
         let req = d.request.as_ref().unwrap();
         assert_eq!(d.state, DraftState::AwaitingConsent);
         assert_eq!(
@@ -574,7 +544,7 @@ mod tests {
 
     #[test]
     fn a_satisfiable_level_is_approved_at_that_level() {
-        let d = awaiting(Level::A2Plus);
+        let d = awaiting(1, 1, "hi", 0, 1000, Required::Level(Level::A2Plus), 10);
         assert_eq!(
             d.request.as_ref().unwrap().selection,
             Selection::Satisfies(Channel::TelegramMiniAppPin)
@@ -607,7 +577,7 @@ mod tests {
 
     #[test]
     fn no_prompt_outlives_the_draft() {
-        let mut d = awaiting(Level::A1);
+        let mut d = awaiting(1, 1, "hi", 0, 1000, Required::Level(Level::A1), 10);
         d.expires = 50;
         d.revise(1, rev("hi!"), 20).unwrap();
         d.evaluated(
@@ -631,7 +601,7 @@ mod tests {
 
     #[test]
     fn no_mandate_is_issued_at_or_after_expires() {
-        let snap = awaiting(Level::A1);
+        let snap = awaiting(1, 1, "hi", 0, 1000, Required::Level(Level::A1), 10);
         let mut d = snap.clone();
         d.decide(&attempt(&snap, Channel::TelegramButton), 20)
             .unwrap();

@@ -1,23 +1,11 @@
 use super::*;
+use crate::testkit::free;
 
 fn kinds(text: &str) -> Vec<FlagKind> {
     let mut k: Vec<FlagKind> = structural(text).into_iter().map(|f| f.kind).collect();
     k.sort();
     k.dedup();
     k
-}
-
-fn free(text: &str) -> Draft<'_> {
-    Draft {
-        text,
-        kind: OutputKind::FreeText,
-        attachments: 0,
-        new_recipient: false,
-        sources: &[],
-        fuzzy_hint: None,
-        tripwire: false,
-        open_mandate: false,
-    }
 }
 
 #[test]

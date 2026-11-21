@@ -1,18 +1,19 @@
 //! Deterministic fixtures for unit tests.
 
 use ed25519_dalek::SigningKey;
-use paseka_proto::draft::DraftKind;
+use paseka_proto::draft::{DraftKind, DraftState};
 use paseka_proto::evidence::Channel;
 use paseka_proto::mandate::{Constraints, OpenKind, OpenMandate, OpenProof, Rate};
 use paseka_proto::{
     Address, DraftId, EventId, Level, MandateId, Nonce, OpenTrust, PairingId, PeerHandle,
-    RequestId, Sha256, TemplateId, TenantId, ThreadId, V1,
+    RequestId, Sha256, TemplateId, TenantId, ThreadId, UnixSecs, V1,
 };
 use serde_json::Value;
 
 use crate::channel::Channels;
-use crate::draft::RequestSeed;
+use crate::draft::{Draft, RequestSeed, Revision};
 use crate::open::Candidate;
+use crate::risk::{self, OutputKind, Required};
 
 /// The protocol test vectors, written by the generator in `vectors.rs`.
 pub(crate) const VECTORS_PATH: &str = concat!(
@@ -148,4 +149,60 @@ pub(crate) fn cand<'a>(to: &'a Address, t: &'a TemplateId, th: &'a ThreadId) -> 
         foreign_attachments: false,
         private_sources: false,
     }
+}
+
+/// Free text `text` with no attachments, sources, hints, tripwire or open mandate.
+pub(crate) fn free(text: &str) -> risk::Draft<'_> {
+    risk::Draft {
+        text,
+        kind: OutputKind::FreeText,
+        attachments: 0,
+        new_recipient: false,
+        sources: &[],
+        fuzzy_hint: None,
+        tripwire: false,
+        open_mandate: false,
+    }
+}
+
+/// An agent revision of `body` without attachments; its release digest is the content hash.
+pub(crate) fn rev(body: &str) -> Revision {
+    Revision {
+        body: body.into(),
+        attachments: vec![],
+        release_digest: crate::hash::content_sha256(body),
+        by_owner: false,
+    }
+}
+
+/// Tenant `t`'s free-text draft `d` to bob in thread 1, revision 1 of `body`, alive from
+/// `created_at` to `expires`, evaluated at `required` at `now` with the MVP channels, request
+/// seed `d` and a 100 s prompt TTL.
+pub(crate) fn awaiting(
+    t: u8,
+    d: u8,
+    body: &str,
+    created_at: UnixSecs,
+    expires: UnixSecs,
+    required: Required,
+    now: UnixSecs,
+) -> Draft {
+    let mut draft = Draft {
+        tenant: tenant(t),
+        id: draft_id(d),
+        kind: DraftKind::FreeText,
+        to: peer("bob"),
+        thread: thread(1),
+        in_reply_to: None,
+        revision: 1,
+        current: rev(body),
+        state: DraftState::AwaitingConsent,
+        reason: None,
+        request: None,
+        created_at,
+        expires,
+        updated_at: created_at,
+    };
+    draft.evaluated(required, &mvp_channels(), seed(d), now, 100);
+    draft
 }
