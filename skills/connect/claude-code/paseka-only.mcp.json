@@ -2,7 +2,7 @@
   "mcpServers": {
     "paseka": {
       "command": "paseka",
-      "args": ["mcp", "--socket", "/run/paseka/agent.sock"]
+      "args": ["mcp", "--socket", "/run/paseka/agent.sock", "--token-file", "~/.config/paseka/claude-code.token"]
     }
   }
 }

@@ -346,7 +346,10 @@ CA-22 and CA-41.
 ## 7. Out of scope
 
 - Out-of-band exfiltration by the agent's own tools (web fetch, mail, shell with network,
-  messengers). Handled by agent configuration guidance L1 to L3, not by the gate.
+  messengers). Handled by the agent configuration guidance L1 to L3 of ADR 0011, not by the gate.
+  The levels are guidance the gate cannot verify; the owner of the agent that reads incoming peer
+  messages carries this risk. The gate records the level the owner states and shows it on every
+  approval prompt, with a permanent marker for L1 (`docs/PROTOCOL.md` §5.4).
 - A malicious hosting operator for hosted tenants. Hosted tenants trust HO explicitly; the
   mitigations are verification and migration paths, not cryptographic isolation from HO. The PIN,
   its pepper and the hosted password default give no protection against HO either (A-9).

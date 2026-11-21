@@ -255,10 +255,15 @@ conversation trust to agents is the `description` of
 - One MCP server per tenant, exposed as tools. Local agents use stdio; others use MCP Streamable
   HTTP on loopback (JSON responses). Non-MCP clients use plain HTTP: `POST /agent/v1/<tool>` with
   the tool input as body and the tool output as response.
-- The stdio server is a relay process running as the agent's user. It holds a per-tenant agent
-  token and forwards calls over a local socket to the gate process, which holds all authority.
-  HTTP clients send the token as `Authorization: Bearer <token>`.
-- The agent token selects the tenant (§12). It grants the tools below and nothing else.
+- Every registered agent (§5.4) has its own agent token, for both transports. The Mini App shows
+  it once when the owner registers the agent, and the owner stores it for that agent.
+- The stdio server is a relay process running as the agent's user. It reads its agent's token
+  from the file named by `--token-file` (readable only by that user; a leading `~/` is that
+  user's home, since MCP clients start the relay without a shell), presents it to the gate
+  with every call, and forwards calls over a local socket to the gate process, which holds all
+  authority. HTTP clients send the token as `Authorization: Bearer <token>`.
+- The agent token selects the tenant (§12) and the registered agent (§5.4). It grants the tools
+  below and nothing else.
 - The gate MUST reject inputs with unknown fields (`invalid_input`). Agents read the advertised
   input schemas from `tools/list`, so strictness costs no compatibility, and proof-like fields
   never pass silently (CA-2).
@@ -326,6 +331,34 @@ Draft limits (`paseka_core::draft::admit`): the gate refuses a new draft from `p
 the last hour, counting every draft created to that peer whatever its state. The check runs
 before evaluation and does not depend on it, so a refusal tells the agent nothing about levels
 (SP-8). It applies under every open mandate, conversation trust included.
+
+### 5.4 Registered agents and protection levels
+
+The owner registers each connected agent in the Mini App with a name and a protection level:
+`L1`, `L2` or `L3`, as ADR 0011 and `docs/AGENT-SETUP.md` define them. Registration requires a
+level; there is no default. Registered agents and their levels are security settings (§9.4): the
+agent interface neither sets nor changes them, and every change is journaled.
+
+The level is the owner's statement about how the agent that reads incoming peer messages is set
+up. The gate cannot verify it, never uses it to compute or lower a required level (§6.1), and
+shows it labelled as the owner's statement:
+
+- on every approval prompt (§7.3, §7.4, §7.5): the name and level of the agent that proposed the
+  draft; a prompt about something other than an agent's draft shows the level of every
+  registered agent of the tenant;
+- in the Mini App agent view: each registered agent with its level;
+- in the Mini App peer view: the level of every registered agent of the tenant, since each one
+  reads incoming messages from every peer.
+
+The gate attributes a draft to the registered agent whose token proposed it (§5.1). When it
+cannot attribute a draft to exactly one registered agent, the prompt shows the level of every
+registered agent of the tenant, with the L1 marker if any of them is at `L1`. Attribution is as
+strong as the separation of token files: agents running as the same unix user can read each
+other's tokens.
+
+Wherever the gate shows an agent at `L1`, it adds the marker "Incoming messages from peers are
+read without protection." The owner cannot dismiss the marker; it goes away only when the owner
+records another level for that agent or removes it.
 
 ## 6. Risk evaluation
 
@@ -511,8 +544,9 @@ token. The gate MUST deduplicate `update_id`.
 ### 7.3 A1: `telegram-button`
 
 The prompt is a message in the approver's private chat with the consent bot. It contains the
-peer name, the peer key fingerprint (first 8 b64u characters of the key), the thread context,
-the flags, and the exact body as plain text (no `parse_mode`). It has buttons Approve
+peer name, the peer key fingerprint (first 8 b64u characters of the key), the agent name and
+protection level with the L1 marker where it applies (§5.4), the thread context, the flags, and
+the exact body as plain text (no `parse_mode`). It has buttons Approve
 (`callback_data` `pk1:y:<nonce>`), Deny (`pk1:n:<nonce>`) and Review (opens the Mini App). If
 the prompt exceeds 4096 characters or the revision has attachments, the gate MUST NOT offer
 Approve in chat (Review only), which is why S2 raises those cases to A2.
@@ -533,7 +567,8 @@ decision, challenge and receive time. Telegram attests who pressed; the gate att
 The Review button is a `web_app` button that opens `https://<gate origin>/app/v1/review#<request_id>`.
 The page fetches the review with the raw `initData` in header `X-Paseka-Init-Data` and shows the
 exact body (invisible and control characters rendered as visible escapes, highlights for every
-flag), the recipient name and key fingerprint, each attachment with name, type, size and hash,
+flag), the recipient name and key fingerprint, the agent name and protection level with the L1
+marker where it applies (§5.4), each attachment with name, type, size and hash,
 the sources read during the turn, and the diff to the previous revision. The page computes the
 release digest from the bytes it rendered (WebCrypto) and sends it with the decision:
 `POST /app/v1/decision` with `{request_id, nonce, release_digest, decision, edited_body?}`.
@@ -787,8 +822,8 @@ The agent influences only the choice of doc, section and the note.
 
 ### 9.4 Security settings
 
-Approvers, peers, trust levels, open mandates, shelves, templates, dictionary, canaries, the
-source registry (§6.4), default floors, windows, the tripwire mode (§4.3) and the verification
+Approvers, peers, registered agents and their protection levels (§5.4), trust levels, open
+mandates, shelves, templates, dictionary, canaries, the source registry (§6.4), default floors, windows, the tripwire mode (§4.3) and the verification
 requirement for trust above T1 (§11) are security settings. After the first-run
 ceremony they change only through an owner decision in the Mini App at A2 or higher, journaled
 with evidence. The bootstrap config is read only before the ceremony; later differences are

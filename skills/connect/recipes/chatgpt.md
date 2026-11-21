@@ -19,4 +19,4 @@ the gate.
 
 After the MVP the gate offers a remote MCP endpoint with OAuth that ChatGPT can add as a
 connector. It will be L1 only: the owner cannot switch off ChatGPT's other tools from the gate,
-so no peer turn mode is possible.
+and neither a separate run (L2) nor OS restrictions (L3) can be applied to a hosted agent.
