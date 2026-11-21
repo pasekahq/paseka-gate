@@ -209,6 +209,15 @@ fn a_canary_in_attachment_text_blocks_like_one_in_the_body() {
 }
 
 #[test]
+fn the_debug_output_of_owner_rules_names_canaries_by_id_without_their_marker() {
+    let mut r = OwnerRules::default();
+    r.add_canary(CanaryId(7), "PASEKA-CANARY-7f3a9c").unwrap();
+    let shown = format!("{r:?}");
+    assert!(shown.contains("CanaryId(7)"), "{shown}");
+    assert!(!shown.to_lowercase().contains("7f3a9c"), "{shown}");
+}
+
+#[test]
 fn every_matching_canary_is_named_by_id_and_no_flag_carries_its_marker() {
     let mut r = OwnerRules::default();
     r.add_canary(CanaryId(1), "PASEKA-CANARY-7f3a9c").unwrap();

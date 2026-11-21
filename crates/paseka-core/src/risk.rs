@@ -9,6 +9,7 @@
 mod sources;
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt;
 
 use base64::Engine as _;
 use base64::engine::general_purpose::{STANDARD_NO_PAD, URL_SAFE_NO_PAD};
@@ -157,8 +158,9 @@ pub struct SourceRead {
     pub verified: bool,
 }
 
-/// The owner's gate-side configuration. The agent can neither read nor edit it.
-#[derive(Debug, Clone, Default)]
+/// The owner's gate-side configuration. The agent can neither read nor edit it. Its `Debug`
+/// output names canaries by id and never shows a marker.
+#[derive(Clone, Default)]
 pub struct OwnerRules {
     /// Dictionary terms, folded.
     dictionary: Vec<Vec<char>>,
@@ -172,6 +174,20 @@ pub struct OwnerRules {
     private_link_domains: Vec<String>,
     /// Maximum length before a flag; [`DEFAULT_MAX_LEN`] when zero.
     pub max_len: usize,
+}
+
+impl fmt::Debug for OwnerRules {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let canaries: Vec<CanaryId> = self.canaries.iter().map(|(id, _)| *id).collect();
+        f.debug_struct("OwnerRules")
+            .field("dictionary", &self.dictionary)
+            .field("canaries", &canaries)
+            .field("fingerprints", &self.fingerprints)
+            .field("vault", &self.vault)
+            .field("private_link_domains", &self.private_link_domains)
+            .field("max_len", &self.max_len)
+            .finish()
+    }
 }
 
 /// The gate's id of one canary marker in a tenant's settings. Notices and the journal name a
