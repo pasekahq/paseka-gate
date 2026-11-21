@@ -15,6 +15,7 @@ use paseka_proto::{
     DraftId, Level, MessageId, Nonce, PeerHandle, RequestId, Sha256, TenantId, ThreadId, UnixSecs,
 };
 
+use crate::HOUR;
 use crate::channel::{Channels, Selection};
 use crate::hash::approval_challenge;
 use crate::risk::Required;
@@ -171,7 +172,7 @@ pub struct Approved {
 }
 
 /// Default prompt TTL (PROTOCOL §7.1, §14).
-pub const PROMPT_TTL_DEFAULT: u64 = 3600;
+pub const PROMPT_TTL_DEFAULT: u64 = HOUR;
 /// Allowed owner settings of the prompt TTL (PROTOCOL §7.1, §14).
 pub const PROMPT_TTL_RANGE: RangeInclusive<u64> = 300..=86_400;
 
@@ -184,8 +185,6 @@ pub const DRAFT_LIFETIME_RANGE: RangeInclusive<u64> = 300..=7 * 86_400;
 pub const PENDING_DRAFTS_PER_TENANT: usize = 50;
 /// Most drafts the agent creates to one peer within any rolling hour (PROTOCOL §5.3, §14).
 pub const DRAFTS_PER_PEER_PER_HOUR: usize = 30;
-
-const HOUR: u64 = 3600;
 
 /// A prompt TTL setting outside [`PROMPT_TTL_RANGE`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

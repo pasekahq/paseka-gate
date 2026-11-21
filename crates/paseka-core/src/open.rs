@@ -12,10 +12,10 @@ use paseka_proto::{
     Address, Level, MandateId, OpenTrust, ShelfId, TemplateId, TenantId, ThreadId, UnixSecs,
 };
 
+use crate::HOUR;
 use crate::pairing::VerificationCheck;
 use crate::tenant::TenantMap;
 
-const HOUR: u64 = 3600;
 const DAY: u64 = 24 * HOUR;
 
 /// Default duration of conversation trust, with no message limit (PROTOCOL §4.4, §14).
