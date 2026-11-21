@@ -50,7 +50,7 @@ pairing state. A key is valid for the peer at `now` when it is the current key a
 only by rotation (§10.6), revocation (§10.7) or owner-confirmed change (§10.8). The same key
 signs envelopes, receipts, pairing messages and mandates; the JWS `typ` header separates the
 domains (§8.1). The private key MUST be readable only by the gate's unix user and MUST NOT be
-exported through any interface.
+exported through any interface other than the tenant export of TI-7 (§12).
 
 ## 3. Content and digests
 
@@ -230,11 +230,13 @@ nothing else; free text that opens a new thread needs the owner. Its duration is
 `conversation_trust` setting of §14, with no message limit by default; the draft limits of §5.3
 still bound it.
 
-Conversation trust never widens the source registry (§6.4). Under an active conversation mandate
-a revision in its thread leaves without the owner only if every registry hit towards that peer is
-Allow, the mandate matches (§9.1, with `private_sources` as §8.3 defines it) and no other stage
-flagged (S12, §6.2). A hit on an Ask source goes to the owner at the stage's floor and a hit on a
-Never source blocks the draft, exactly as outside the thread.
+A conversation mandate the owner issues carries `private_sources: allow`, so the source registry
+decides each hit (§8.3). Conversation trust never widens the registry (§6.4). Under an active
+conversation mandate a revision in its thread leaves without the owner only if every registry hit
+towards that peer is Allow, the mandate matches (§9.1) and no other stage flagged (S12, §6.2):
+content of an Allow source leaves, a hit on an Ask source goes to the owner at the stage's floor,
+a hit on a Never source blocks the draft, exactly as outside the thread, and a flag of any other
+stage still holds the reply for the owner.
 
 Every `DraftView`, so every `propose` output, and every `inbox` item carries `thread_trust` for
 its thread and peer (`paseka_core::open::thread_trust`). `active` is true only for a
@@ -434,26 +436,26 @@ channel, so `level` and `proof.channel` always agree (§8.4).
 A source is content the owner may not want to reach a peer. The stages S4, S5 (personal
 identifiers), S8 and S9 report the source they matched, and the owner's decision for that source
 towards the recipient sets their result. A source is the one source of a built-in detector, or
-a source the owner registers with a kind and a gate id. Each kind, how it is caught, and whether
-its detector exists in this version, comes before the MVP release, or after it:
+a source the owner registers with a kind and a gate id. Each kind and how it is caught:
 
-| Source | In code | Caught by | Detector |
-|--------|---------|-----------|----------|
-| Files and folders | registered `Files` | S8 fingerprints of their documents | this version |
-| Agent memory, skills, instruction files (`CLAUDE.md`, `AGENTS.md`), system prompt | registered `AgentContext`, offered by default when the owner connects an agent | S8 fingerprints | this version |
-| Secrets | built-in `Secrets` | S4 gitleaks-style rules | this version |
-| Named secrets from a vault | registered `VaultSecret`, one per value | S4 exact value match | this version |
-| Private links (documents shared by link, signed object URLs, invites, magic links) | built-in `PrivateLinks` | S4 link domains and query tokens | this version |
-| MCP sources (mail, calendar, contacts) | registered `Mcp` | S9 reads; verified through the gate's MCP proxy | this version, agent-declared reads only; the proxy after the MVP |
-| Messages from one peer | registered `PeerInbound`, one per peer | S8 fingerprints of the bodies that peer sent | this version |
-| Other chats and groups | registered `Chat`, one per chat with its member peers | S8 fingerprints of its messages | this version |
-| Memory about third parties | registered `ThirdParties` | S8 fingerprints of the entries the owner tags | this version |
-| Personal identifiers (card with Luhn, IBAN, phone, address, coordinates) | built-in `PersonalIds` | S5 validators | this version for cards and IBANs |
-| One-time codes, 2FA, OTP | built-in `OneTimeCodes` | S4 code detector; the decision is always Never | this version |
-| Images | | metadata removed when attached (§3.1); text in images by OCR | metadata removal with attachment handling in the MVP, OCR after it |
+| Source | In code | Caught by |
+|--------|---------|-----------|
+| Files and folders | registered `Files` | S8 fingerprints of their documents |
+| Agent memory, skills, instruction files (`CLAUDE.md`, `AGENTS.md`), system prompt | registered `AgentContext`, offered by default when the owner connects an agent | S8 fingerprints |
+| Secrets | built-in `Secrets` | S4 gitleaks-style rules |
+| Named secrets from a vault | registered `VaultSecret`, one per value | S4 exact value match |
+| Private links (documents shared by link, signed object URLs, invites, magic links) | built-in `PrivateLinks` | S4 link domains and query tokens |
+| MCP sources (mail, calendar, contacts) | registered `Mcp` | S9 reads, agent-declared or verified through the gate's MCP proxy |
+| Messages from one peer | registered `PeerInbound`, one per peer | S8 fingerprints of the bodies that peer sent |
+| Other chats and groups | registered `Chat`, one per chat with its member peers | S8 fingerprints of its messages |
+| Memory about third parties | registered `ThirdParties` | S8 fingerprints of the entries the owner tags |
+| Personal identifiers (card with Luhn, IBAN, phone, address, coordinates) | built-in `PersonalIds` | S5 validators |
+| One-time codes, 2FA, OTP | built-in `OneTimeCodes` | S4 code detector; the decision is always Never |
+| Images | | metadata removed when attached (§3.1); text in images by OCR |
 
-Fingerprints are exact shingle sets. MinHash, OCR and an LLM paraphrase check come after the MVP
-as further detectors of the same registry.
+Which of these detectors exist in this version, which come before the MVP release and which
+after it, is the Source coverage table of `docs/MVP.md`; further detectors join the same
+registry.
 
 Detectors (`paseka_core::risk`):
 
@@ -676,12 +678,18 @@ PIN lifecycle (constants and types in `paseka_core::pin`):
   fails. A missing or unreadable pepper is an error: the gate tells the owner once in the consent
   chat, refuses each PIN entry without checking it and without counting it against the attempt
   limit, and never generates a new pepper for a tenant with a stored verifier. The tenant keeps
-  its `telegram-miniapp-pin` channel, so requests that need it stay open. The owner recovers by
-  setting a new PIN through the local CLI (Change below), which generates a fresh pepper, writes
-  it and only then stores the new verifier.
+  its `telegram-miniapp-pin` channel, so requests that need it stay open. Recovery is a new PIN
+  set through the local CLI (Change below), which generates a fresh pepper, writes it and only
+  then stores the new verifier. The local CLI runs on the gate host, so for a self-host tenant
+  the owner runs it. For a hosted tenant the hosting operator runs it at the owner's request,
+  and the owner then changes the PIN the operator set through consent in the Mini App, entering
+  it as the old PIN.
 - Export and migration (TI-7): the pepper does not travel, and the export carries no PIN
   verifier; the kind travels as a setting. The import sets a new PIN through the local CLI on
   the new gate, which generates a fresh pepper there, before that gate serves the tenant.
+- Deletion: a tenant's pepper is deleted together with its verifier when the tenant is removed
+  from a gate, and on the old gate when the tenant's migration completes, that is once the new
+  gate serves the tenant.
 - Change: through consent in the Mini App, where the owner enters the old PIN, checked and
   limited like a decision PIN, and then the new one; or by the local CLI on the gate host, run
   as the gate's unix user (TB-5), which needs no old PIN. A change of kind is a PIN change. The
@@ -849,6 +857,12 @@ through T2 mandates. Doc ids are opaque, issued by the gate, and never paths. On
 4. evaluates it (§6). With no flags it releases at A0; otherwise it goes to the owner.
 
 The agent influences only the choice of doc, section and the note.
+
+Tripwire mode (§4.3) does not change step 1 (`paseka_core::open::open_shelves`): a T2 mandate
+that is active by `nbf`, `exp` and revocation still opens its shelves to `share`, so the agent
+gets the same draft or `not_found` as outside tripwire mode and learns nothing of it (SP-8). The
+release is refused in step 4: no open mandate matches in tripwire mode
+(`paseka_core::open::OpenBook::matches`), so the share goes to the owner at A2+ (S11).
 
 ### 9.4 Security settings
 
@@ -1137,6 +1151,20 @@ compares later from the peer's page in the Mini App, which shows the kept string
 there is a decision at A2 that marks the peer verified (`paseka_core::envelope::Receiver::verify_peer`).
 The agent cannot verify a peer; `PeerView.verified` reports the state to it.
 
+A key change keeps the verification as it was. A rotation or revocation replacement installed
+through the commitment on record (§10.6, §10.7) and an owner-confirmed key change after the
+key-change short authentication string (§10.8) leave a verified peer verified and a peer that is
+not verified not verified: the commitment and the key-change string bind the new key to the key
+on record, so they carry over what the pairing comparison established and add nothing to it. A
+peer that is not verified becomes verified only by "Codes match" on the pairing string above.
+
+Re-pairing an address the tenant still records with the same current key keeps its key record
+and takes the state and the verification of the new pairing, so skipping the comparison then
+leaves the peer not verified (`paseka_core::envelope::Receiver::add_peer`); with another key it
+is refused (`conflict`, step 4). Unpairing removes the peer record with its keys and
+verification, so a later pairing records the peer anew, verified only if its owner confirms the
+new pairing string.
+
 Trust above T1 needs verification. While the tenant's verification requirement is on, the
 default, the gate neither presents to the owner nor activates an open mandate of trust T2, T3 or
 `conversation` for a peer that is not verified (`paseka_core::open::OpenBook::present` and
@@ -1171,8 +1199,13 @@ Invariants:
   request inside that tenant; one of another tenant behaves as nonexistent (TI-3, CA-39).
 - TI-6 Rate limits, storage quotas and queue sizes are per tenant.
 - TI-7 Journal export and migration to self-host export one tenant: its key, settings, peers,
-  journal; never its PIN pepper or verifier (§7.5). Peers keep working because the address stays
-  the same; only the endpoint changes, which the gate announces through a later event type.
+  journal; never its PIN pepper or verifier, which §7.5 sets anew on the new gate and deletes on
+  the old one. Peers keep working because the address stays the same; only the endpoint changes,
+  which the gate announces through a later event type. The import registers the tenant like
+  every new tenant (§11 step 4): when a tenant of the new gate records the imported address as a
+  peer, the import is refused and changes nothing. The import never removes that peer record, a
+  security setting of another tenant (§9.4, TI-4); that tenant's owner unpairs the peer through
+  consent (§11), and the import is then run again.
 
 ### 12.1 Local names in the CLI
 

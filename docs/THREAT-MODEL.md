@@ -12,7 +12,7 @@ states who attacks what, what we assume, and which property each conformance att
 | OA | Owner's agent (any model, any harness) connected through the agent interface | Untrusted for release. Assumed hijackable at any time |
 | PE | Peer: another human paired with the owner | Untrusted |
 | PA | Peer's agent, which writes the inbound messages | Untrusted, assumed hostile |
-| PG | Peer's gate | Authenticated by its paired key; content untrusted |
+| PG | Peer's gate | Authenticated by its paired key; content untrusted; its claim of the approval level is believed (§7) |
 | GT | Guest tenant: a person without an own gate, working by hand on a hosted gate | Untrusted towards other tenants |
 | HO | Hosting operator of a multi-tenant gate | Trusted by its hosted tenants (explicit) |
 | TG | Telegram (Bot API servers, clients, Mini App platform) | Trusted for A1/A2 attestation |
@@ -105,6 +105,21 @@ Each property SP-n is tested by the conformance attacks CA-n listed with it. A c
 passes when the stated outcome holds and no envelope leaves the gate unless stated otherwise.
 Attack CA-n is the entry `CA-n` of `crates/paseka-conformance` and the test `caNN_*` of the same
 number in its `tests/attacks.rs`. Numbers are stable; new attacks are appended.
+
+Of the 57 attacks CA-1 to CA-57, 44 run and pass in `paseka conformance` and in
+`crates/paseka-conformance/tests/attacks.rs`. 13 are Pending: `paseka conformance` reports them
+with the part they need, and `tests/attacks.rs` ignores them with that part as the reason. The
+milestone is the one of `docs/MVP.md` that builds the part for the attack.
+
+| Missing part | Pending attacks | Milestone |
+|---|---|---|
+| the gate daemon (`paseka serve`) | CA-5, CA-38 | M2 |
+| | CA-23 | M3 |
+| | CA-44, CA-46 | M4 |
+| the journal | CA-45 | M2 |
+| the consent bot and Mini App | CA-4, CA-11, CA-14, CA-16, CA-17 | M3 |
+| invite codes (PROTOCOL §11) | CA-35 | M4 |
+| an installed gate (install skill) | CA-42 | M5 |
 
 SP-1 No approve surface. The agent interface has no tool, parameter or field that approves,
 denies, issues mandates, or changes security settings.

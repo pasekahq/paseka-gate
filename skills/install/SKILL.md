@@ -217,7 +217,10 @@ Ask the owner to do these. You must not do them, and you must not receive the se
 4. Start: `sudo systemctl enable --now paseka`.
 5. Ceremony: open the consent bot in Telegram, press Start, open the Mini App, read the
    configuration shown in plain words (approvers, default level per peer, dictionary lists,
-   canaries, shelves) and confirm. The gate refuses all release until this is done.
+   canaries, shelves) and confirm. In the same ceremony they set the PIN in the Mini App: six
+   digits by default on a self-host gate, or a password of at least 12 characters (PROTOCOL
+   §7.5). They type it only in the Mini App, never in a chat, and never tell it to you. The gate
+   refuses all release until this is done.
 
 ## Step 4: conformance attacks
 
@@ -236,7 +239,9 @@ Independent probes (written here, not taken from the repository):
 3. `revise` the draft after the owner opened the preview but before they approve. Pass when the
    old consent no longer releases and a new request appears.
 4. Propose text containing a canary the owner planted for the test. Pass when the draft is
-   `blocked` even after the owner tries to approve, and the owner gets an alert.
+   `blocked` even after the owner tries to approve, and the owner gets an alert. Under the
+   default full alarm the tenant is then in tripwire mode (PROTOCOL §4.3); the owner clears it in
+   the Mini App with the PIN before you go on.
 
 Pass when the suite exits 0 and all four probes pass.
 

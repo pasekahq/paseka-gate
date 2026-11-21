@@ -13,7 +13,7 @@
   "constraints": {
     "max_len": 2000,
     "attachments": "none",
-    "private_sources": "deny",
+    "private_sources": "allow",
     "rate": {
       "max_messages": 10
     }

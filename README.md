@@ -67,6 +67,15 @@ self-host with one command.
 - [docs/adr/](docs/adr/): decisions.
 - [AGENTS.md](AGENTS.md): rules for coding agents working on this repository.
 
+## Conformance attacks
+
+`paseka conformance` runs the 57 conformance attacks CA-1 to CA-57 of the threat model. 44 run
+and pass; 13 are Pending until the part they need exists: the gate daemon (CA-5, CA-38 in M2;
+CA-23 in M3; CA-44, CA-46 in M4), the journal (CA-45, M2), the consent bot and Mini App (CA-4,
+CA-11, CA-14, CA-16, CA-17, M3), invite codes (CA-35, M4) and an installed gate (CA-42, M5).
+The milestones are those of [docs/MVP.md](docs/MVP.md); the table is in
+[docs/THREAT-MODEL.md](docs/THREAT-MODEL.md) §6.
+
 ## License
 
 Copyright (C) 2026 the paseka-gate contributors.
