@@ -30,7 +30,7 @@ only, and changes SP-7 of `docs/THREAT-MODEL.md`.
 - The owner sees the required level, the channel used, and, when the level is above every
   configured channel, a notice that the strongest available protection is being used instead.
 - The evidence records the channel's own level and, in the marked case, the new optional field
-  `required_level`. The closed mandate records the level the channel attests, so its `level`
+  `required_level`; for the PIN evidence that can only be `A3`. The closed mandate records the level the channel attests, so its `level`
   and `proof.channel` always agree for a receiver (PROTOCOL §8.4); the marker reaches a peer
   only through the evidence behind `proof.evidence_sha256`.
 - The PIN evidence records that the gate accepted the PIN and the A2 fields; it never contains

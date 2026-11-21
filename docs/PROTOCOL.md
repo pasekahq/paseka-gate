@@ -114,7 +114,9 @@ approval_challenge = SHA-256(
 `level` is the required level string (`A1`, `A2`, `A2+`, `A3`), also when it is above every
 configured channel (§6.2). Key-based channels (A3 passkey, later the biometric A2+ channel) sign
 these 32 bytes; A1, A2 and PIN evidence records them. Through `release_digest` the challenge also binds the
-draft `expires`, so the owner approves the draft's lifetime with its content.
+draft `expires`, so the owner approves the draft's lifetime with its content. Evidence `level` is
+the channel's level; the challenge `level` is the evidence `required_level` when present, and
+otherwise the closed mandate's `level` (§6.3).
 
 ## 4. Drafts
 

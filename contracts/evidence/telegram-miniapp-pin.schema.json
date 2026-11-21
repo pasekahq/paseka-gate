@@ -47,10 +47,9 @@
     },
     "required_level": {
       "enum": [
-        "A2+",
         "A3"
       ],
-      "description": "Level the request required. Present only when it is above every configured channel; `level` is then that of the strongest configured channel (PROTOCOL §6.2)."
+      "description": "Level the request required. Present only when it is above every configured channel; `level` is then that of the strongest configured channel (PROTOCOL §6.2). This channel attests A2+, so only an A3 requirement marks it."
     },
     "channel": {
       "const": "telegram-miniapp-pin"

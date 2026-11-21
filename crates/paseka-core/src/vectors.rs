@@ -1,7 +1,8 @@
 //! Generator of `contracts/fixtures/vectors/digests.json`, of the closed mandate inside the
 //! `wire/envelope` fixtures, of the `mandate/closed`, `evidence/telegram-button` and
-//! `evidence/telegram-miniapp-pin` fixtures, of the `key.rotate`, `key.revoke`, `wire/key-proof` and `wire/key-replacement` fixtures, and of
-//! the `pairing/accept` fixture with a malformed commitment, from the synthetic seeds.
+//! `evidence/telegram-miniapp-pin` fixtures, of the marked `evidence/telegram-miniapp` fixture,
+//! of the `key.rotate`, `key.revoke`, `wire/key-proof` and `wire/key-replacement` fixtures, and
+//! of the `pairing/accept` fixture with a malformed commitment, from the synthetic seeds.
 //!
 //! `cargo test -p paseka-core --lib vectors::` fails unless those files are exactly the
 //! generator's output; with `PASEKA_WRITE_VECTORS=1` it rewrites them instead.
@@ -29,7 +30,7 @@ use paseka_proto::envelope::{
 };
 use paseka_proto::evidence::{
     Channel, Decision, MiniAppFields, RequestBinding, TelegramButtonEvidence, TelegramEnv,
-    TelegramMiniAppPinEvidence,
+    TelegramMiniAppEvidence, TelegramMiniAppPinEvidence,
 };
 use paseka_proto::jws::Typ;
 use paseka_proto::mandate::{AttachmentMeta, ClosedKind, ClosedMandate, ClosedProof};
@@ -829,42 +830,82 @@ fn telegram_button_fixtures(e: &TelegramButtonEvidence) -> Vec<(PathBuf, String)
     ]
 }
 
-/// A2+ evidence for `challenge`'s request decided through the PIN channel when the request
-/// required `required`: A2+, or A3 above every MVP channel.
-fn miniapp_pin_evidence(challenge: &ChallengeInput, required: Level) -> TelegramMiniAppPinEvidence {
+/// The binding of `challenge`'s request, which required `required`, decided through `channel`;
+/// marked with `required_level` when `required` is above the channel.
+fn binding(challenge: &ChallengeInput, channel: Channel, required: Level) -> RequestBinding {
+    RequestBinding {
+        tenant: challenge.tenant.clone(),
+        request_id: challenge.request_id.clone(),
+        nonce: challenge.nonce.clone(),
+        challenge: approval_challenge(
+            &challenge.tenant,
+            &challenge.request_id,
+            challenge.release_digest,
+            &challenge.nonce,
+            required,
+        ),
+        decision: Decision::Approve,
+        received_at: AT,
+        required_level: (required > channel.strength()).then_some(required),
+    }
+}
+
+fn miniapp_fields() -> MiniAppFields {
     let init_data = format!(
         "auth_date={}&hash=00&signature=AA&user=%7B%22id%22%3A2000001%7D",
         AT - 20
     );
+    MiniAppFields {
+        bot_id: 1_000_001,
+        approver_user_id: 2_000_001,
+        init_data_sha256: sha256(init_data.as_bytes()),
+        init_data,
+        auth_date: AT - 20,
+        telegram_env: TelegramEnv::Production,
+        edited: false,
+        edited_content_sha256: None,
+    }
+}
+
+/// The marked `evidence/telegram-button` and `evidence/telegram-miniapp` fixtures: an A2 request
+/// of a tenant with the button only, and an A2+ request of a tenant with the button and the Mini
+/// App.
+fn above_available_fixtures(
+    unmarked: &TelegramButtonEvidence,
+    challenge: &ChallengeInput,
+) -> Vec<(PathBuf, String)> {
+    let button = TelegramButtonEvidence {
+        binding: binding(challenge, Channel::TelegramButton, Level::A2),
+        ..unmarked.clone()
+    };
+    let miniapp = TelegramMiniAppEvidence {
+        v: 1,
+        channel: Channel::TelegramMiniApp,
+        level: Level::A2,
+        binding: binding(challenge, Channel::TelegramMiniApp, Level::A2Plus),
+        miniapp: miniapp_fields(),
+    };
+    vec![
+        (
+            fixtures("evidence/telegram-button").join("valid/approve-above-available.json"),
+            json_file(&button),
+        ),
+        (
+            fixtures("evidence/telegram-miniapp").join("valid/approve-above-available.json"),
+            json_file(&miniapp),
+        ),
+    ]
+}
+
+/// A2+ evidence for `challenge`'s request decided through the PIN channel when the request
+/// required `required`: A2+, or A3 above every MVP channel.
+fn miniapp_pin_evidence(challenge: &ChallengeInput, required: Level) -> TelegramMiniAppPinEvidence {
     TelegramMiniAppPinEvidence {
         v: 1,
         channel: Channel::TelegramMiniAppPin,
         level: Level::A2Plus,
-        binding: RequestBinding {
-            tenant: challenge.tenant.clone(),
-            request_id: challenge.request_id.clone(),
-            nonce: challenge.nonce.clone(),
-            challenge: approval_challenge(
-                &challenge.tenant,
-                &challenge.request_id,
-                challenge.release_digest,
-                &challenge.nonce,
-                required,
-            ),
-            decision: Decision::Approve,
-            received_at: AT,
-            required_level: (required > Level::A2Plus).then_some(required),
-        },
-        miniapp: MiniAppFields {
-            bot_id: 1_000_001,
-            approver_user_id: 2_000_001,
-            init_data_sha256: sha256(init_data.as_bytes()),
-            init_data,
-            auth_date: AT - 20,
-            telegram_env: TelegramEnv::Production,
-            edited: false,
-            edited_content_sha256: None,
-        },
+        binding: binding(challenge, Channel::TelegramMiniAppPin, required),
+        miniapp: miniapp_fields(),
         pin_verified_at: AT - 5,
     }
 }
@@ -881,6 +922,8 @@ fn telegram_miniapp_pin_fixtures(challenge: &ChallengeInput) -> Vec<(PathBuf, St
         .as_object_mut()
         .expect("evidence is an object")
         .remove("pin_verified_at");
+    let mut marked_a2plus = value.clone();
+    marked_a2plus["required_level"] = "A2+".into();
     let mut with_pin = value;
     with_pin["pin"] = "246810".into();
     vec![
@@ -894,6 +937,10 @@ fn telegram_miniapp_pin_fixtures(challenge: &ChallengeInput) -> Vec<(PathBuf, St
             json_file(&no_pin_check),
         ),
         (dir.join("invalid/contains-pin.json"), json_file(&with_pin)),
+        (
+            dir.join("invalid/required-level-a2plus.json"),
+            json_file(&marked_a2plus),
+        ),
     ]
 }
 
@@ -925,6 +972,10 @@ fn outputs() -> Vec<(PathBuf, String)> {
         &vectors.signing_keys.bob.key_id,
     ));
     out.extend(telegram_button_fixtures(&vectors.signed.evidence));
+    out.extend(above_available_fixtures(
+        &vectors.signed.evidence,
+        &vectors.approval_challenge[0].input,
+    ));
     out.extend(telegram_miniapp_pin_fixtures(
         &vectors.approval_challenge[0].input,
     ));
