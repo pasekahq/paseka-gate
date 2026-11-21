@@ -140,7 +140,7 @@ range are the draft lifetime of §14. A prompt never outlives the draft: a reque
 | `denied` | The owner refused | yes |
 | `expired` | The prompt TTL, the mandate `exp` or the draft `expires` passed | yes |
 | `withdrawn` | The agent withdrew it | yes |
-| `blocked` | Policy forbids release (canary, hard rule) | yes |
+| `blocked` | Policy forbids release (canary, Never source, hard rule) | yes |
 
 Transitions:
 
@@ -326,12 +326,13 @@ releases free text. The agent cannot read or edit any input of evaluation except
 | S1 base | exact | free text to a peer: A1; template or shelf share: none |
 | S2 structure: URLs, e-mail addresses, base64 runs of 24+ or hex runs of 32+ characters, digit runs of 9+, length above the A1 prompt capacity, attachments, first message to this peer | exact | A2 |
 | S3 display safety: bidi controls, zero-width and other invisible or control characters except tab and newline, mixed-script look-alikes | exact | A2 |
-| S4 secrets (gitleaks-style rules) | exact | A2 |
-| S5 dictionary: built-in PII detectors (cards with Luhn, IBAN with mod 97, phones, addresses, ids), personal lists, topics | exact | A2 |
+| S4 secrets (gitleaks-style rules), source `secrets` (§6.4) | exact | by registry: A2 under Ask |
+| S5 personal identifiers (cards with Luhn, IBAN with mod 97, phones, addresses, ids), source `personal identifiers` (§6.4) | exact | by registry: A2 under Ask |
+| S5 dictionary: personal lists, topics | exact | A2 |
 | S6 per-peer policy: topic denied for this peer | exact | A2 |
 | S7 canaries: marker in body or attachment text, raw or inside decoded base64, hex or percent-encoded runs, case-insensitive | exact | block |
-| S8 fingerprints of sensitive folders (shingles, MinHash), verbatim or near-verbatim | exact | A2+ |
-| S9 sources: MCP proxy log shows reads from sensitive folders during a peer-started turn | exact | A2+ |
+| S8 fingerprints of registered sources (§6.4), verbatim or near-verbatim | exact | by registry: A2+ under Ask |
+| S9 source reads: registered sources read during a peer-started turn (§6.4) | exact | by registry: A2+ under Ask |
 | S10 embedding similarity, classifier | fuzzy | A2 at most |
 | S11 tripwire mode active (§4.3) | exact | A2+ |
 | S12 open mandate (§9.1) | exact | A0 only if every other stage returned no flag |
@@ -339,7 +340,8 @@ releases free text. The agent cannot read or edit any input of evaluation except
 Rules:
 
 - The result of S12 replaces S1 only when S2 to S11 returned no flag. Otherwise the required
-  level is the maximum floor and the draft goes to the owner with all flags highlighted.
+  level is the maximum floor and the draft goes to the owner with all flags highlighted. A hit
+  on a source the registry allows towards the recipient is no flag (§6.4).
 - Without a matching open mandate the required level is at least A1, for templates and shelf
   shares too: a T0 peer gets nothing without consent.
 - A fuzzy stage that fails or times out adds the flag `fuzzy_unavailable` and no floor. An exact
@@ -358,7 +360,8 @@ Rules:
   (A2+).
 - The owner can change default floors only through consent in the Mini App (§9.4). The S1 floor
   for free text, the S7 block, the S11 floor and the no-flag condition of S12 are not
-  configurable; whether a canary hit enters tripwire mode is the mode setting of §4.3.
+  configurable; whether a canary hit enters tripwire mode is the mode setting of §4.3. The
+  registry decisions of §6.4 set the result of S4, S5 personal identifiers, S8 and S9.
 
 ### 6.3 Channel strength
 
@@ -375,6 +378,56 @@ A channel's level is the row that names it. The selection rule of §6.2 is
 marked case it adds `required_level`, the level the request required. The closed mandate's
 `level` is the required level, or in the marked case the level of the strongest configured
 channel, so `level` and `proof.channel` always agree (§8.4).
+
+### 6.4 Source registry
+
+A source is content the owner may not want to reach a peer. The stages S4, S5 (personal
+identifiers), S8 and S9 report the source they matched, and the owner's decision for that source
+towards the recipient sets their result. A source is the one source of a built-in detector, or
+a source the owner registers with a kind and a gate id. Each kind, how it is caught, and whether
+its detector exists in this version, comes before the MVP release, or after it:
+
+| Source | In code | Caught by | Detector |
+|--------|---------|-----------|----------|
+| Files and folders | registered `Files` | S8 fingerprints of their documents | this version |
+| Agent memory, skills, instruction files (`CLAUDE.md`, `AGENTS.md`), system prompt | registered `AgentContext`, offered by default when the owner connects an agent | S8 fingerprints | this version |
+| Secrets | built-in `Secrets` | S4 gitleaks-style rules | this version |
+| Named secrets from a vault | | exact value match | MVP |
+| Private links (documents shared by link, signed object URLs, invites, magic links) | | link domains and query tokens | MVP |
+| MCP sources (mail, calendar, contacts) | registered `Mcp` | S9 reads; verified through the gate's MCP proxy | this version, agent-declared reads only; the proxy after the MVP |
+| Messages from one peer | registered `PeerInbound`, one per peer | S8 fingerprints of the bodies that peer sent | this version |
+| Other chats and groups | | content of group X is a source for every peer outside X | MVP |
+| Memory about third parties | registered `ThirdParties` | S8 fingerprints of the entries the owner tags | this version |
+| Personal identifiers (card with Luhn, IBAN, phone, address, coordinates) | built-in `PersonalIds` | S5 validators | this version for cards and IBANs |
+| One-time codes, 2FA, OTP | built-in `OneTimeCodes` | a code detector; the decision is always Never | MVP |
+| Images | | EXIF removed when attached; text in images by OCR | EXIF in the MVP, OCR after it |
+
+Fingerprints are exact shingle sets. MinHash, OCR and an LLM paraphrase check come after the MVP
+as further detectors of the same registry.
+
+Decisions. The registry holds one decision per tenant, source and peer address
+(`paseka_core::source::SourceRegistry`): Allow, Ask or Never. A source without a decision is Ask
+towards every peer. One-time codes are Never towards every peer and no decision changes them. A
+decision towards one peer never applies to another peer.
+
+Evaluation (`paseka_core::risk::assess` with `paseka_core::source::Decisions`, the tenant's
+decisions towards the recipient):
+
+- a hit on a Never source blocks the draft (`blocked`, reason `policy`);
+- a hit on an Ask source raises the floor to the stage's floor of §6.2 and is a flag, so S12
+  cannot release the revision; the gate then selects the channel by §6.3;
+- a hit on an Allow source adds no floor and is no flag for S12; the owner's screen still shows
+  it, marked as allowed.
+
+Every other stage applies unchanged whatever the registry says. A read is verified when it is in
+the gate's MCP log and unverified when the agent declared it in `sources` (§5.2); both count.
+
+Changes. Registered sources and decisions are security settings (§9.4): only an owner decision
+in the Mini App at A2 or higher changes them. Registering adds a source at Ask and never replaces
+a registered one. Allow and Ask are decided on the settings page or from an approval prompt. A
+change that sets or lifts Never is accepted only from the settings page: never from an approval
+prompt, an open mandate, or anything the agent reaches (CA-54). The agent interface has no
+operation on the registry (SP-1).
 
 ## 7. Approval channels and evidence
 
@@ -679,13 +732,15 @@ The agent influences only the choice of doc, section and the note.
 
 ### 9.4 Security settings
 
-Approvers, peers, trust levels, open mandates, shelves, templates, dictionary, canaries,
-fingerprint sources, default floors, windows and the tripwire mode (§4.3) are security settings. After the first-run
+Approvers, peers, trust levels, open mandates, shelves, templates, dictionary, canaries, the
+source registry (§6.4), default floors, windows and the tripwire mode (§4.3) are security
+settings. After the first-run
 ceremony they change only through an owner decision in the Mini App at A2 or higher, journaled
 with evidence. The bootstrap config is read only before the ceremony; later differences are
 reported to the owner and ignored (CA-23). The PIN and its kind change only as §7.5 states:
 through consent with the old PIN, or by the local CLI on the gate host. The tripwire mode does
-not change while tripwire mode is active; only a clear with A2+ ends it (§4.3).
+not change while tripwire mode is active; only a clear with A2+ ends it (§4.3). A registry
+decision that sets or lifts Never is made only on the settings page (§6.4).
 
 ## 10. Gate-to-gate wire
 

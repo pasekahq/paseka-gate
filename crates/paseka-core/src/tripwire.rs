@@ -6,6 +6,7 @@
 use paseka_proto::evidence::Channel;
 use paseka_proto::{DraftId, Level, Nonce, PeerHandle, RequestId, TenantId, UnixSecs};
 
+use crate::channel::SETTING_LEVEL;
 use crate::draft::{Draft, RequestSeed};
 use crate::risk::{Assessment, CanaryId};
 use crate::tenant::TenantMap;
@@ -13,8 +14,6 @@ use crate::tenant::TenantMap;
 /// Floor of every draft while tripwire mode is in effect (S11), and the level a clear needs:
 /// in the MVP only `telegram-miniapp-pin` satisfies it.
 pub const TRIPWIRE_LEVEL: Level = Level::A2Plus;
-/// Floor of a security setting change (PROTOCOL §9.4).
-const SETTING_LEVEL: Level = Level::A2;
 
 /// What a canary hit does beyond blocking its draft: a security setting (PROTOCOL §9.4).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

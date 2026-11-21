@@ -19,6 +19,7 @@ pub mod peer;
 pub mod pin;
 pub mod risk;
 pub mod shelf;
+pub mod source;
 pub mod template;
 pub mod tenant;
 pub mod token;

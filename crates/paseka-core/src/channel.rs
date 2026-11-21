@@ -5,6 +5,9 @@
 use paseka_proto::Level;
 use paseka_proto::evidence::Channel;
 
+/// Floor of a security setting change (PROTOCOL §9.4).
+pub const SETTING_LEVEL: Level = Level::A2;
+
 /// The human approval channels a tenant has configured: at least one, never the open mandate.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Channels(Vec<Channel>);

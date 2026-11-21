@@ -17,11 +17,12 @@ release path.
   (gitleaks-like secret rules, card numbers, IBAN, phones, addresses, IDs), personal lists built
   in the first-run ceremony, per-peer policy.
 - Exact checks for any agent: structure (links, base64 or hex blobs, long numbers, length,
-  attachments, new recipient), canaries, fingerprints of sensitive folders (shingles or MinHash).
+  attachments, new recipient), canaries, fingerprints of registered sources (ADR 0018).
   Fuzzy checks (embedding similarity, a classifier model, local or via qb) may only raise.
 - Default rules: free text gives A1; a structural flag or dictionary hit gives A2 with
-  highlights; a fingerprint hit or a read from a sensitive folder per the MCP proxy log gives A2+
-  or A3; a canary blocks even with approval and alerts the owner.
+  highlights; a fingerprint hit or a read of a registered source gives A2+ while the source
+  registry says Ask for the recipient (ADR 0018); a canary blocks even with approval and alerts
+  the owner.
 - Level computation is `max` over all rule outputs; no rule returns a level below its input.
 
 ## Consequences
