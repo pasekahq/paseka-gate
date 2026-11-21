@@ -6,7 +6,7 @@ members = ["crates/paseka-proto", "crates/paseka-core", "crates/paseka-conforman
 version = "0.0.1"
 edition = "2024"
 rust-version = "1.85"
-license = "Apache-2.0 OR MIT"
+license = "AGPL-3.0-only"
 repository = "https://github.com/pasekahq/paseka-gate"
 publish = false
 

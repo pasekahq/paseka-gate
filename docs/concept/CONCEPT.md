@@ -1,7 +1,8 @@
 # Paseka gate — concept (owner decisions of 2026-11-18)
 
 Working name: `paseka-gate` (binary `paseka`). Organisation: `pasekahq` on GitHub. The repo is
-LOCAL ONLY for now: never add a remote, never push, never publish packages.
+public at https://github.com/pasekahq/paseka-gate (owner decision of 2026-11-21, which replaces
+the earlier "local only, never push" rule). Packages and releases are still not published.
 
 ## What it is
 A consent firewall between ANY owner's AI agent (a custom Rust agent "ulei", Hermes, Claude Code,
