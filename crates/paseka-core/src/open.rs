@@ -15,7 +15,11 @@ use crate::tenant::TenantMap;
 const HOUR: u64 = 3600;
 const DAY: u64 = 24 * HOUR;
 
-/// Maximum lifetime per trust (PROTOCOL §8.3).
+/// Default duration of conversation trust, with no message limit (PROTOCOL §8.3, §14).
+pub const CONVERSATION_TTL_DEFAULT: u64 = 30 * 60;
+
+/// Maximum lifetime per trust (PROTOCOL §8.3); for conversation trust it bounds the owner's
+/// duration setting (§14).
 pub fn max_lifetime(trust: OpenTrust) -> u64 {
     match trust {
         OpenTrust::Conversation => DAY,
@@ -30,7 +34,7 @@ pub fn max_lifetime(trust: OpenTrust) -> u64 {
 pub struct BadShape(pub &'static str);
 
 /// Checks the shape rules a deserialiser does not: signing level and channel, per-trust
-/// constraints, a non-empty rate and the maximum lifetime.
+/// constraints, a non-empty rate except for conversation trust, and the maximum lifetime.
 ///
 /// # Errors
 /// [`BadShape`] naming the broken rule.
@@ -43,14 +47,15 @@ pub fn check_shape(m: &OpenMandate) -> Result<(), BadShape> {
         return Err(BadShape("proof channel cannot attest signed_at_level"));
     }
     let r = &c.rate;
-    if r.max_messages.is_none() && r.per_hour.is_none() && r.per_day.is_none() {
+    let empty_rate = r.max_messages.is_none() && r.per_hour.is_none() && r.per_day.is_none();
+    if empty_rate && m.trust != OpenTrust::Conversation {
         return Err(BadShape("empty rate"));
     }
     let ok = match m.trust {
         OpenTrust::T1 => !c.templates.is_empty() && c.max_len.is_some(),
         OpenTrust::T2 => !c.shelves.is_empty() && c.attachments == Some(AttachmentRule::Shelf),
         OpenTrust::T3 => !c.topics.is_empty() && c.max_len.is_some() && r.per_day.is_some(),
-        OpenTrust::Conversation => c.thread.is_some() && r.max_messages.is_some(),
+        OpenTrust::Conversation => c.thread.is_some(),
     };
     if !ok {
         return Err(BadShape("constraints required by the trust are missing"));

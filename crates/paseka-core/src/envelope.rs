@@ -14,10 +14,19 @@ use crate::peer::{KeyChange, KeyChangeRefused, NoPendingChange, PeerKeys};
 use crate::tenant::TenantMap;
 use crate::token;
 
-/// Allowed clock skew into the future.
+/// Allowed clock skew into the future of envelope, mandate and pairing times (PROTOCOL §14).
 pub const SKEW_SECS: u64 = 300;
-/// Oldest accepted `iat`.
+/// Envelope window: the oldest accepted `iat` is this far before `now` (PROTOCOL §10.3, §14).
 pub const MAX_AGE_SECS: u64 = 604_800;
+/// Retry horizon: the sender attempts a delivery until this long after `iat` (PROTOCOL §10.4,
+/// §14).
+pub const RETRY_HORIZON_SECS: u64 = 72 * 3600;
+
+/// Whether the sender may still attempt delivery of an envelope created at `iat`; once not, the
+/// delivery is `failed`.
+pub fn retry_allowed(iat: UnixSecs, now: UnixSecs) -> bool {
+    now < iat.saturating_add(RETRY_HORIZON_SECS)
+}
 
 /// Signs an envelope payload with the sender tenant key. Retries send the identical bytes.
 ///
@@ -362,6 +371,27 @@ mod tests {
             r.accept(&parts.join("."), now),
             Err(WireErrorCode::BadSignature)
         );
+    }
+
+    #[test]
+    fn the_envelope_window_and_the_skew_are_inclusive() {
+        let (_, _, env, _) = setup();
+        let cases = [
+            (env.iat + MAX_AGE_SECS, Ok(ReceiptStatus::Accepted)),
+            (env.iat + MAX_AGE_SECS + 1, Err(WireErrorCode::Stale)),
+            (env.iat - SKEW_SECS, Ok(ReceiptStatus::Accepted)),
+            (env.iat - SKEW_SECS - 1, Err(WireErrorCode::FromFuture)),
+        ];
+        for (now, want) in cases {
+            let (mut r, jws, _, _) = setup();
+            assert_eq!(r.accept(&jws, now).map(|a| a.status), want, "now {now}");
+        }
+    }
+
+    #[test]
+    fn delivery_is_retried_until_the_horizon() {
+        assert!(retry_allowed(IAT, IAT + RETRY_HORIZON_SECS - 1));
+        assert!(!retry_allowed(IAT, IAT + RETRY_HORIZON_SECS));
     }
 
     #[test]

@@ -118,7 +118,7 @@ pub enum PrivateSources {
     Allow,
 }
 
-/// Rate limits of an open mandate. At least one is set.
+/// Rate limits of an open mandate. At least one is set, except under conversation trust.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct Rate {
     /// Messages over the whole lifetime.

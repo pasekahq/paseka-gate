@@ -125,9 +125,8 @@ numbered from 1. Each revision has its own body, attachments, release digest, ev
 and, while it awaits consent, one approval request (request id, nonce, challenge).
 
 Every draft has an expiry `expires = created_at + lifetime`, fixed at creation and bound into the
-release digest of every revision (§3.2). The lifetime is an owner setting from 300 s (5 min) to
-604800 s (7 days), default 43200 s (12 h); in code `DRAFT_LIFETIME_RANGE` and
-`DRAFT_LIFETIME_DEFAULT` in `paseka_core::draft`. A prompt never outlives the draft: a request's
+release digest of every revision (§3.2). The lifetime is an owner setting; its default and
+range are the draft lifetime of §14. A prompt never outlives the draft: a request's
 `expires_at` is at most `expires`. The gate issues no closed mandate for a draft at or after
 `expires`, also not for a retry; a draft not yet released moves to `expired` then.
 
@@ -282,7 +281,12 @@ uses the same body with status 400, 404, 409, 413, 429, 500 or 503.
 | `unavailable` | gate is not ready (first-run ceremony pending, maintenance); HTTP 503 | yes |
 | `internal` | unexpected failure; the draft is unchanged | yes |
 
-Default limits: 30 drafts per peer per hour, 20 drafts in `awaiting_consent` per tenant.
+Draft limits (`paseka_core::draft::admit`): the gate refuses a new draft from `propose` or
+`share` with `rate_limited` when the tenant already has the pending drafts per tenant of §14 in
+`awaiting_consent`, or when the agent created the drafts per peer per hour of §14 to `to` within
+the last hour, counting every draft created to that peer whatever its state. The check runs
+before evaluation and does not depend on it, so a refusal tells the agent nothing about levels
+(SP-8). It applies under every open mandate, conversation trust included.
 
 ## 6. Risk evaluation
 
@@ -356,8 +360,8 @@ channel, so `level` and `proof.channel` always agree (§8.4).
 
 When a revision enters `awaiting_consent` the gate creates one approval request:
 `{tenant, request_id, draft_id, revision, release_digest, level, nonce, challenge, issued_at,
-expires_at}`. The nonce comes from the OS CSPRNG. The prompt TTL defaults to 3600 s (owner
-setting, 300 to 86400 s); `expires_at` is `issued_at` plus the TTL, capped at the draft
+expires_at}`. The nonce comes from the OS CSPRNG. The prompt TTL is an owner setting, default
+and range in §14; `expires_at` is `issued_at` plus the TTL, capped at the draft
 `expires` (§4). A new revision, withdrawal, denial or expiry revokes the request.
 A decision is accepted only when all hold:
 
@@ -426,7 +430,9 @@ The gate verifies initData as follows; every step MUST pass:
 4. HMAC: `secret = HMAC-SHA-256(key = "WebAppData", msg = bot_token)`; `hash` MUST equal
    `hex(HMAC-SHA-256(key = secret, msg = data-check-string))`, compared in constant time. The
    HMAC alone is never sufficient (CA-16).
-5. Freshness: `now - auth_date <= 300` (owner setting, 60 to 600) and `auth_date <= now + 30`.
+5. Freshness: `now - auth_date` is at most the initData window, an owner setting, and
+   `auth_date` is at most the initData future skew after `now` (§14,
+   `paseka_core::initdata::InitDataWindow::fresh`).
 6. `user.id` is an approver of the tenant.
 7. A decision consumes the initData: the gate records `SHA-256(initData)` until it leaves the
    window and rejects reuse (CA-11). Review fetches do not consume it.
@@ -495,8 +501,8 @@ PIN lifecycle (constants and types in `paseka_core::pin`):
   limited like a decision PIN, and then the new one; or by the local CLI on the gate host, run
   as the gate's unix user (TB-5), which needs no old PIN. A change of kind is a PIN change. The
   journal records each change without the PIN or the verifier.
-- Attempt limit: per tenant, `PIN_MAX_FAILURES` (5) wrong entries in a row freeze PIN entry for
-  `PIN_FREEZE_SECS` (900 s) from the fifth failure (`PinLimiter`). During the freeze every PIN
+- Attempt limit: per tenant, the PIN failures of §14 in a row freeze PIN entry for the PIN
+  freeze of §14 from the last of them (`PinLimiter`). During the freeze every PIN
   entry is refused unchecked and does not extend it. Entering the freeze sends the owner exactly
   one notice in the consent chat, with the end of the freeze and never the entered value. A
   right PIN resets the count; the freeze ends at its time with a fresh count. Decision PINs and
@@ -559,8 +565,8 @@ order), `release_digest`, `level`, `proof` (`channel`, `approved_at`, `evidence_
 optional `open_mandate` (jti of the open mandate for A0), optional `evidence` (publicly
 verifiable evidence, A3 only)).
 
-Issuance: `exp = iat + 60` and `iat < expires`. The nonce is the consumed request nonce, or for
-A0 a fresh nonce. The `jti` is unique. The gate issues a closed mandate for every release, including A0 releases
+Issuance: `exp = iat +` the closed mandate lifetime of §14, and `iat < expires`. The nonce is the
+consumed request nonce, or for A0 a fresh nonce. The `jti` is unique. The gate issues a closed mandate for every release, including A0 releases
 under an open mandate, so every `message` envelope carries exactly one closed mandate.
 
 ### 8.3 Open mandate
@@ -571,7 +577,8 @@ higher), `constraints`, `proof`.
 
 Constraints: `templates` (template ids), `max_len` (body bytes), `attachments` (`none` or
 `shelf`), `private_sources` (`deny` or `allow`), `rate` (`max_messages`, `per_hour`, `per_day`),
-`topics`, `shelves` (shelf ids), `thread` (for `conversation`).
+`topics`, `shelves` (shelf ids), `thread` (for `conversation`). `rate` sets at least one limit,
+except for `conversation`, whose `rate` may be empty.
 
 Rules:
 
@@ -579,8 +586,10 @@ Rules:
   constraints in plain words. Open mandates stay in the issuing gate; peers do not need them.
 - At most one active and one pending open mandate per tenant, peer and trust. A new one is
   presented only after the previous one is refused, revoked or expired (AP2 rule, CA-28).
-- Maximum lifetimes: `conversation` 24 h (default 30 min or 10 messages), T1 30 days, T2 90 days,
-  T3 7 days with renewal.
+- Maximum lifetimes: `conversation` the bound of the conversation trust setting of §14, T1 30
+  days, T2 90 days, T3 7 days with renewal.
+- Conversation trust is an open mandate on one thread. Its duration is an owner setting, default
+  in §14, with no message limit by default; the draft limits of §5.3 still bound it.
 - Revocation takes effect for every evaluation that starts after it commits (CA-27).
 - Counters are consumed in the release transaction.
 
@@ -598,7 +607,8 @@ For each `message` event the receiver MUST verify the mandate (SP-14) and reject
 4. `thread` and `in_reply_to` equal those of the event;
 5. `release_digest` equals the digest recomputed from the mandate `tenant` and `expires` and the
    event (§3.2);
-6. `iat <= event iat <= exp`, `exp - iat <= 60`, and `iat <= now + 300`;
+6. `iat <= event iat <= exp`, `exp - iat` at most the closed mandate lifetime, and `iat` at most
+   the clock skew after `now` (§14);
 7. `iat < expires`: the mandate was issued while the draft was alive;
 8. `level` and `proof.channel` are known and consistent (§6.3); with `proof.evidence` present the
    receiver verifies it;
@@ -616,7 +626,7 @@ The receiver shows the sender's level and channel with the inbox item.
 | T1 | `trust: T1`, `templates`, `max_len` | rendered templates whose fields pass validation |
 | T2 | `trust: T2`, `shelves`, `attachments: shelf` | shares of docs on those shelves, note per §5.2 |
 | T3 (later) | `trust: T3`, `topics`, `rate`, short `exp` | free text on allowed topics |
-| conversation | `trust: conversation`, `thread`, `rate.max_messages`, short `exp` | free text in one thread |
+| conversation | `trust: conversation`, `thread`, short `exp` | free text in one thread |
 
 An open mandate matches a revision when: it is active (`nbf <= now < exp`, not revoked, tenant
 not in tripwire mode); `to` is the revision's recipient; the revision's kind is allowed by the
@@ -691,10 +701,11 @@ In order; the first failure determines the error:
 3. `kid` names a key valid now for that peer (§2), and the signature verifies with that key
    (`bad_signature` for either); for `key.rotate` and `key.revoke` the key is the peer's current
    key, `key_revoked` or not, and never the previous key;
-4. `iat <= now + 300` (`from_future`) and `now - iat <= 604800` (`stale`);
+4. `iat` at most the clock skew after `now` (`from_future`) and `now - iat` at most the envelope
+   window (`stale`), both in §14;
 5. event id dedupe per `(tenant, iss, id)`: same `envelope_sha256` seen returns `200` with the
    stored receipt and status `duplicate`; a different one is `conflict`. Seen ids are kept for at
-   least 604800 + 300 s;
+   least the envelope window plus the clock skew;
 6. known `type` (`unsupported`); `data` valid (`malformed`);
 7. for `message`: §8.4; for `key.rotate`: §10.6; for `key.revoke`: §10.7; peer volume limits
    (`rate_limited`);
@@ -703,9 +714,9 @@ In order; the first failure determines the error:
 ### 10.4 Retry
 
 The sender retries on connection failure, any 5xx, `429` and `from_future`, with exponential
-backoff from 5 s doubling to a cap of 3600 s, jitter of ±20%, honouring `Retry-After`, until 72 h
-after `iat`; then the delivery is `failed` and the owner is notified. Any other 4xx ends the
-delivery as `failed` at once. Unknown error codes are classified by HTTP status alone. A `200`
+backoff from 5 s doubling to a cap of 3600 s, jitter of ±20%, honouring `Retry-After`, until the
+retry horizon of §14 after `iat` (`paseka_core::envelope::retry_allowed`); then the delivery is
+`failed` and the owner is notified. Any other 4xx ends the delivery as `failed` at once. Unknown error codes are classified by HTTP status alone. A `200`
 whose receipt does not verify counts as a failed attempt.
 
 ### 10.5 Receipt and errors
@@ -752,9 +763,8 @@ key being replaced. Its `data` (`contracts/wire/key-rotate.schema.json`):
   payload (`contracts/wire/key-proof.schema.json`) is `{v, iss, new_key, next_key_sha256,
   previous_valid_until}`: `iss` is the envelope `iss`, the other fields equal those of `data`.
 
-The grace N defaults to 7 days, the envelope acceptance window of §10.3, and is an owner setting
-of 1 to 30 days (§9.4); in code `paseka_core::peer::DEFAULT_GRACE_DAYS` and
-`paseka_core::peer::GRACE_DAYS`. Pairing messages carry the first commitment (§11).
+The grace N is an owner setting (§9.4) with the default and range of the key grace of §14; the
+default equals the envelope window of §10.3. Pairing messages carry the first commitment (§11).
 
 After §10.3 steps 1 to 6 the receiver checks, in order:
 
@@ -862,7 +872,8 @@ Pairing exchanges tenant addresses, keys and endpoints between an inviter (alice
 in pairing.
 
 1. Invite. Alice creates an invite in her Mini App. Her gate stores
-   `{tenant, code, expires_at (default 24 h, at most 7 days), used: false}` and shows the deep link
+   `{tenant, code, expires_at, used: false}`, with `expires_at` from the invite lifetime of §14,
+   and shows the deep link
    `https://t.me/<consent_bot>?start=pair_<code>`. Alice sends the link to bob out of band.
 2. Invite card. Bob opens the link; alice's consent bot receives `/start pair_<code>` from
    Telegram user U. The gate records U (id, username, name) on the invite (first opener only) and
@@ -875,7 +886,8 @@ in pairing.
    aud: a, key: bob key id, code, endpoint: bob endpoint, name_hint, iat, next_key_sha256?}`,
    where the optional `next_key_sha256` is bob's first rotation commitment (§10.6).
 4. Accept. Alice's gate verifies the signature with the key in `key`, whose id `kid` names
-   (self-certifying), `aud` is the tenant that issued the code, `|now - iat| <= 300`, and
+   (self-certifying), `aud` is the tenant that issued the code, `|now - iat|` is at most the
+   clock skew of §14, and
    consumes the code atomically (`invite_invalid` if unknown, used or expired). An `iss` that is
    one of its own tenants, or is already recorded for that tenant with another key, is refused
    (`conflict`); a recorded key changes only by rotation, revocation or owner-confirmed change
@@ -927,3 +939,28 @@ Invariants:
 
 Contract evolution and reader tolerance (unknown fields ignored, informational enums with an
 `Unknown` fallback, authority-bearing values fail closed) are defined in `contracts/README.md`.
+
+## 14. Defaults
+
+Every default, limit and window that the sections above name by reference. A setting is an owner
+setting (§9.4) and may take any value in its range; a value without a range is fixed. Code names
+are relative to `paseka_core`. `contracts/defaults.json` is the machine-readable copy of this
+table, with the same parameter names; the code constants equal it.
+
+| Parameter | Default | Setting range | Code |
+|-----------|---------|---------------|------|
+| `draft_lifetime` (§4) | 43200 s (12 h) | 300 s to 604800 s (5 min to 7 days) | `draft::DRAFT_LIFETIME_DEFAULT`, `draft::DRAFT_LIFETIME_RANGE` |
+| `pending_drafts_per_tenant` (§5.3) | 50 drafts in `awaiting_consent` | fixed | `draft::PENDING_DRAFTS_PER_TENANT` |
+| `drafts_per_peer_per_hour` (§5.3) | 30 drafts | fixed | `draft::DRAFTS_PER_PEER_PER_HOUR` |
+| `conversation_trust` (§8.3) | 1800 s (30 min), no message limit | at most 86400 s (24 h) | `open::CONVERSATION_TTL_DEFAULT`, `open::max_lifetime(OpenTrust::Conversation)` |
+| `prompt_ttl` (§7.1) | 3600 s (1 h) | 300 s to 86400 s | `draft::PROMPT_TTL_DEFAULT`, `draft::PROMPT_TTL_RANGE` |
+| `init_data_window` (§7.4) | 300 s | 60 s to 600 s | `initdata::INIT_DATA_WINDOW_DEFAULT`, `initdata::INIT_DATA_WINDOW_RANGE` |
+| `init_data_future_skew` (§7.4) | 30 s | fixed | `initdata::INIT_DATA_FUTURE_SECS` |
+| `closed_mandate_lifetime` (§8.2, §8.4) | 60 s | fixed | `mandate::CLOSED_TTL_SECS` |
+| `clock_skew` (§8.4, §10.3, §11) | 300 s | fixed | `envelope::SKEW_SECS` |
+| `envelope_window` (§10.3) | 604800 s (7 days) | fixed | `envelope::MAX_AGE_SECS` |
+| `retry_horizon` (§10.4) | 259200 s (72 h) | fixed | `envelope::RETRY_HORIZON_SECS` |
+| `key_grace` (§10.6) | 7 days | 1 to 30 days | `peer::DEFAULT_GRACE_DAYS`, `peer::GRACE_DAYS` |
+| `invite_lifetime` (§11) | 86400 s (24 h) | at most 604800 s (7 days) | `pairing::INVITE_TTL_DEFAULT`, `pairing::INVITE_TTL_MAX` |
+| `pin_failures` (§7.5) | 5 wrong entries in a row | fixed | `pin::PIN_MAX_FAILURES` |
+| `pin_freeze` (§7.5) | 900 s (15 min) | fixed | `pin::PIN_FREEZE_SECS` |

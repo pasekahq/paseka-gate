@@ -7,15 +7,14 @@ use paseka_proto::evidence::Channel;
 use paseka_proto::mandate::ClosedMandate;
 use paseka_proto::{Address, Level, MandateId, TenantId, UnixSecs};
 
+use crate::envelope::SKEW_SECS;
 use crate::hash::{Release, content_sha256, release_digest, sha256};
 use crate::peer::PeerKeys;
 use crate::tenant::TenantMap;
 use crate::token::{self, TokenError};
 
-/// Closed mandate lifetime: `exp = iat + 60`.
+/// Closed mandate lifetime, `exp - iat` (PROTOCOL §8.2, §14).
 pub const CLOSED_TTL_SECS: u64 = 60;
-/// Allowed clock skew for `iat` in the future.
-pub const SKEW_SECS: u64 = 300;
 /// Most attachments per message.
 pub const MAX_ATTACHMENTS: usize = 8;
 
@@ -263,6 +262,28 @@ mod tests {
                 m.expires
             );
         }
+    }
+
+    #[test]
+    fn the_closed_mandate_lifetime_and_the_skew_are_inclusive() {
+        let s = signed();
+        let c = &s.claims;
+        let lasting = |secs| ClosedMandate {
+            exp: c.iat + secs,
+            ..c.clone()
+        };
+        assert_eq!(
+            verify_claims(&s, &lasting(CLOSED_TTL_SECS)).map(|_| ()),
+            Ok(())
+        );
+        assert_eq!(
+            verify_claims(&s, &lasting(CLOSED_TTL_SECS + 1)).map(|_| ()),
+            Err(MandateInvalid::Time)
+        );
+        let keys = PeerKeys::paired(s.alice.verifying_key(), None);
+        let at = |now| verify_received(&s.env, &keys, &bob(), &JtiBook::default(), now);
+        assert!(at(c.iat - SKEW_SECS).is_ok());
+        assert_eq!(at(c.iat - SKEW_SECS - 1), Err(MandateInvalid::Time));
     }
 
     #[test]

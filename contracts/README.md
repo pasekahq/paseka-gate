@@ -14,6 +14,7 @@ is normative in `docs/PROTOCOL.md`; these files fix the shapes. Schema `$id`s li
 | `agent/` | `<tool>.input` and `<tool>.output` for the ten agent tools, `views` (shared output objects), `error` |
 | `wire/` | gate-to-gate `envelope` payload, `key-rotate` (`data` of a `key.rotate` envelope), `key-proof` (payload of its proof of possession), `key-revoke` (`data` of a `key.revoke` envelope), `key-replacement` (payload of its replacement signature), `receipt` payload, `error` response |
 | `pairing/` | `request` and `accept` payloads |
+| `defaults.json` | the defaults table of PROTOCOL §14 as data (not a schema) |
 | `fixtures/` | examples and test vectors |
 
 ## Fixtures
@@ -41,6 +42,15 @@ seeds, and the same test without the variable fails when a file differs from wha
 writes.
 
 All fixture data is synthetic: alice, bob, carol, example.org.
+
+## Defaults
+
+`defaults.json` is the machine-readable copy of the defaults table, PROTOCOL §14: `{v, parameters}`
+where each parameter is `{name, unit, default, min?, max?, code}`. `unit` is `s`, `days`,
+`drafts` or `entries`; `min` and `max` bound an owner setting inclusively, and a parameter
+without them is fixed; `code` names the `paseka_core` constants, relative to the crate, that
+hold the values. A test in `paseka-core` fails when a constant differs from this file or when
+the file and the code do not list the same parameters.
 
 ## Schemas describe writers
 
@@ -117,6 +127,17 @@ Additive (ADR 0010, ADR 0015), except the last item, made in place before any re
   configured channel (PROTOCOL §6.2).
 - `required_level` of `evidence/telegram-miniapp-pin` allows only `A3`: that channel attests
   A2+, so only an A3 requirement is above it.
+
+### Version 1: defaults table and conversation trust without message limit
+
+Made in place in v1 before any release or deployed peer (ADR 0017).
+
+- New data file `defaults.json`, the defaults table of PROTOCOL §14.
+- `mandate/open`: a `conversation` mandate no longer requires `rate.max_messages` and may have an
+  empty `rate`; `T1` and `T2` keep a non-empty `rate`, and `T3` its `per_day`.
+- The fixture `mandate/open/invalid/empty-rate.json`, a conversation mandate, is now
+  `mandate/open/valid/conversation-without-message-limit.json`; the new
+  `mandate/open/invalid/t1-empty-rate.json` keeps the empty-rate case.
 
 ## Tolerant readers
 

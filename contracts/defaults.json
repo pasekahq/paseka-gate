@@ -1,0 +1,20 @@
+{
+  "v": 1,
+  "parameters": [
+    {"name": "draft_lifetime", "unit": "s", "default": 43200, "min": 300, "max": 604800, "code": ["draft::DRAFT_LIFETIME_DEFAULT", "draft::DRAFT_LIFETIME_RANGE"]},
+    {"name": "pending_drafts_per_tenant", "unit": "drafts", "default": 50, "code": ["draft::PENDING_DRAFTS_PER_TENANT"]},
+    {"name": "drafts_per_peer_per_hour", "unit": "drafts", "default": 30, "code": ["draft::DRAFTS_PER_PEER_PER_HOUR"]},
+    {"name": "conversation_trust", "unit": "s", "default": 1800, "max": 86400, "code": ["open::CONVERSATION_TTL_DEFAULT", "open::max_lifetime(OpenTrust::Conversation)"]},
+    {"name": "prompt_ttl", "unit": "s", "default": 3600, "min": 300, "max": 86400, "code": ["draft::PROMPT_TTL_DEFAULT", "draft::PROMPT_TTL_RANGE"]},
+    {"name": "init_data_window", "unit": "s", "default": 300, "min": 60, "max": 600, "code": ["initdata::INIT_DATA_WINDOW_DEFAULT", "initdata::INIT_DATA_WINDOW_RANGE"]},
+    {"name": "init_data_future_skew", "unit": "s", "default": 30, "code": ["initdata::INIT_DATA_FUTURE_SECS"]},
+    {"name": "closed_mandate_lifetime", "unit": "s", "default": 60, "code": ["mandate::CLOSED_TTL_SECS"]},
+    {"name": "clock_skew", "unit": "s", "default": 300, "code": ["envelope::SKEW_SECS"]},
+    {"name": "envelope_window", "unit": "s", "default": 604800, "code": ["envelope::MAX_AGE_SECS"]},
+    {"name": "retry_horizon", "unit": "s", "default": 259200, "code": ["envelope::RETRY_HORIZON_SECS"]},
+    {"name": "key_grace", "unit": "days", "default": 7, "min": 1, "max": 30, "code": ["peer::DEFAULT_GRACE_DAYS", "peer::GRACE_DAYS"]},
+    {"name": "invite_lifetime", "unit": "s", "default": 86400, "max": 604800, "code": ["pairing::INVITE_TTL_DEFAULT", "pairing::INVITE_TTL_MAX"]},
+    {"name": "pin_failures", "unit": "entries", "default": 5, "code": ["pin::PIN_MAX_FAILURES"]},
+    {"name": "pin_freeze", "unit": "s", "default": 900, "code": ["pin::PIN_FREEZE_SECS"]}
+  ]
+}
