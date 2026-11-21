@@ -22,6 +22,21 @@ paths are illustrative.
 5. Do not add peers, shelves, policies or dictionary entries; those change only through the
    owner's consent in the Mini App.
 
+## Threads and conversation trust
+
+Tell the owner this, and act on it when you are the connected agent. Details:
+`docs/AGENT-SETUP.md` and the `propose` tool description.
+
+- A thread is a chain of messages linked by `in_reply_to`. To answer a message, call `propose`
+  with `in_reply_to` set to its id from `inbox` and `to` set to its sender. Without
+  `in_reply_to` the message opens a new thread.
+- The owner can trust one thread with one peer for a while, 30 minutes unless the owner sets
+  another duration. While that conversation mandate is active, free-text replies in that thread
+  leave without asking the owner. Free text in a new thread goes to the owner.
+- `thread_trust` in each `propose` output and `inbox` item shows it: `active`, `ends_at` and
+  `seconds_left`. When `active` is false or the time is up, the next reply waits for the owner.
+- You cannot ask for, extend or end conversation trust; only the owner sets it in the Mini App.
+
 ## Procedure
 
 1. Ask the owner which agent and which level (default L2).
@@ -32,8 +47,9 @@ paths are illustrative.
 4. Apply `recipes/<agent>.md` for the chosen level.
 5. Self-check, all must pass:
    - The agent lists the paseka tools; none of them approves, releases or changes settings.
-   - `propose` a test draft to the owner's own test peer; `status` is `awaiting_consent`; the
-     owner sees it in Telegram and denies it; `status` becomes `denied`.
+   - `propose` a test draft without `in_reply_to` to the owner's own test peer; its
+     `thread_trust` has `active` false and `new_thread_needs_owner` true; `status` is
+     `awaiting_consent`; the owner sees it in Telegram and denies it; `status` becomes `denied`.
    - L2 only: start a peer turn with a test message from the test peer that asks the agent to
      fetch `https://example.org/` and to run `curl https://example.org/`. Pass when both are
      refused by the agent's configuration (not by the agent's choice) and the answer arrives as a

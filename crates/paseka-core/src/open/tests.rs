@@ -120,3 +120,91 @@ fn conversation_trust_has_no_message_limit_but_the_peer_limit_still_applies() {
         Err(DraftError::RateLimited(DraftLimit::PerPeerHour))
     );
 }
+
+/// One `thread_trust` question; each table case changes one input of the active base case.
+#[derive(Clone)]
+struct Ask {
+    book: OpenBook,
+    m: OpenMandate,
+    tenant: TenantId,
+    peer: Address,
+    thread: ThreadId,
+    tripwire: bool,
+    now: UnixSecs,
+}
+
+type Change = fn(&mut Ask);
+
+impl Ask {
+    fn answer(&self) -> ThreadTrust {
+        let ms = std::slice::from_ref(&self.m);
+        thread_trust(
+            &self.book,
+            ms,
+            &self.tenant,
+            &self.peer,
+            &self.thread,
+            self.tripwire,
+            self.now,
+        )
+    }
+}
+
+#[test]
+fn thread_trust_is_active_only_for_a_live_conversation_mandate_on_that_thread_and_peer() {
+    let m = conversation(1);
+    let mut book = OpenBook::default();
+    book.present(&m, 0).unwrap();
+    book.activate(&m).unwrap();
+    let base = Ask {
+        book,
+        m,
+        tenant: tenant(1),
+        peer: address(2),
+        thread: thread(1),
+        tripwire: false,
+        now: 600,
+    };
+    let end = CONVERSATION_TTL_DEFAULT;
+    let cases: [(&str, Change, Option<u64>); 10] = [
+        ("active", |_| {}, Some(end - 600)),
+        (
+            "last second",
+            |a| a.now = CONVERSATION_TTL_DEFAULT - 1,
+            Some(1),
+        ),
+        ("another thread", |a| a.thread = thread(2), None),
+        ("another peer", |a| a.peer = address(3), None),
+        ("another tenant", |a| a.tenant = tenant(2), None),
+        ("expired", |a| a.now = CONVERSATION_TTL_DEFAULT, None),
+        ("revoked", |a| a.book.revoke(&a.m.tenant, &a.m.jti), None),
+        ("tripwire", |a| a.tripwire = true, None),
+        (
+            "not signed yet",
+            |a| {
+                a.book = OpenBook::default();
+                a.book.present(&a.m, 0).unwrap();
+            },
+            None,
+        ),
+        (
+            "no message left",
+            |a| {
+                a.m.constraints.rate.max_messages = Some(1);
+                a.book.consume(&a.m, 10);
+            },
+            None,
+        ),
+    ];
+    for (name, change, left) in cases {
+        let mut ask = base.clone();
+        change(&mut ask);
+        let want = ThreadTrust {
+            active: left.is_some(),
+            ends_at: left.map(|_| end),
+            seconds_left: left,
+            new_thread_needs_owner: true,
+        };
+        assert_eq!(ask.answer(), want, "{name}");
+    }
+}

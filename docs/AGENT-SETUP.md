@@ -33,6 +33,26 @@ runs at.
 Tools: `inbox`, `read`, `propose`, `revise`, `withdraw`, `status`, `share`, `queue`, `peers`,
 `journal`. There is no approve tool. Exact inputs and outputs: `docs/PROTOCOL.md`.
 
+## Threads and conversation trust
+
+A thread is a chain of messages linked by `in_reply_to`, as in e-mail. An agent answers a message
+by calling `propose` with `in_reply_to` set to that message's id from `inbox`; the answer joins
+its thread. A message without `in_reply_to` opens a new thread, and the owner sees the thread
+named by its first message.
+
+The owner can trust one conversation in the Mini App: the agent's free-text replies in that one
+thread with that one peer then leave without asking the owner, unless the gate's checks hold one
+for the owner, for 30 minutes unless the owner sets another duration (at most 24 hours). This is
+an open mandate on one thread (`docs/PROTOCOL.md` §4.4). It never covers another thread or
+another peer, so free text that opens a new thread goes to the owner even while a conversation is
+trusted. The agent cannot ask for, extend or end conversation trust.
+
+The agent sees the state in the `thread_trust` object of every `propose` output and `inbox` item:
+`active` tells whether a conversation mandate covers the thread, `ends_at` when it ends and
+`seconds_left` how much time is left; `new_thread_needs_owner` says that free text in a new
+thread goes to the owner. The `propose` tool description tells the agent the same, in
+`contracts/agent/propose.input.schema.json`.
+
 ## Levels
 
 L1, connected. The agent has the paseka MCP server next to its usual tools. Answers leave only

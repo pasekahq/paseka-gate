@@ -96,6 +96,9 @@
               "$ref": "../common.schema.json#/$defs/unix_time"
             }
           }
+        },
+        "thread_trust": {
+          "$ref": "#/$defs/ThreadTrust"
         }
       },
       "allOf": [
@@ -195,6 +198,65 @@
         },
         "sender_level": {
           "$ref": "../common.schema.json#/$defs/level"
+        },
+        "thread_trust": {
+          "$ref": "#/$defs/ThreadTrust"
+        }
+      }
+    },
+    "ThreadTrust": {
+      "type": "object",
+      "description": "Conversation trust of one thread with one peer (PROTOCOL §4.4). `ends_at` and `seconds_left` are present exactly when `active` is true.",
+      "required": [
+        "active",
+        "new_thread_needs_owner"
+      ],
+      "properties": {
+        "active": {
+          "type": "boolean",
+          "description": "An active conversation mandate covers free-text replies in this thread to this peer."
+        },
+        "ends_at": {
+          "$ref": "../common.schema.json#/$defs/unix_time",
+          "description": "When that conversation mandate ends."
+        },
+        "seconds_left": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Seconds from the making of this output until `ends_at`."
+        },
+        "new_thread_needs_owner": {
+          "type": "boolean",
+          "description": "Free text without `in_reply_to` opens a new thread and goes to the owner."
+        }
+      },
+      "if": {
+        "properties": {
+          "active": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "ends_at",
+          "seconds_left"
+        ]
+      },
+      "else": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "ends_at"
+              ]
+            },
+            {
+              "required": [
+                "seconds_left"
+              ]
+            }
+          ]
         }
       }
     },

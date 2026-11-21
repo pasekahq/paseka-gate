@@ -490,6 +490,25 @@ pub struct DraftView {
     /// Delivery, once released.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub delivery: Option<Delivery>,
+    /// Conversation trust of the draft's thread with `to`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thread_trust: Option<ThreadTrust>,
+}
+
+/// Conversation trust of one thread with one peer as the agent sees it (PROTOCOL §4.4).
+/// `ends_at` and `seconds_left` are present exactly when `active`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ThreadTrust {
+    /// Whether an active conversation mandate covers free-text replies in this thread.
+    pub active: bool,
+    /// End of that mandate.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ends_at: Option<UnixSecs>,
+    /// Seconds from the output's making until `ends_at`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seconds_left: Option<u64>,
+    /// Whether free text that opens a new thread goes to the owner.
+    pub new_thread_needs_owner: bool,
 }
 
 /// `origin` of peer text: always `peer`, so the agent treats it as untrusted data.
@@ -525,6 +544,9 @@ pub struct InboxItem {
     pub read: bool,
     /// Level the sender's release satisfied.
     pub sender_level: Level,
+    /// Conversation trust of this thread with the sender.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thread_trust: Option<ThreadTrust>,
 }
 
 /// An attachment of an inbound message.
