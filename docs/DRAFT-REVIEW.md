@@ -22,8 +22,8 @@ and `contracts/`.
   mandate shape, matching, counters and the one-pending rule (§8.3, §9.1), shelf shares and the
   note rule (§9.3), typed template fields (§9.2), monotonic risk evaluation with the S12
   no-flag rule.
-- Threat model to tests. Every SP-1 to SP-22 has at least one CA; every CA-1 to CA-50 has a test
-  `caNN_*` in `crates/paseka-conformance/tests/attacks.rs`. 36 run and pass; 14 are ignored
+- Threat model to tests. Every SP-1 to SP-22 has at least one CA; every CA-1 to CA-52 has a test
+  `caNN_*` in `crates/paseka-conformance/tests/attacks.rs`. 38 run and pass; 14 are ignored
   with the missing part named. Every MVP DoD item names its checks.
 - Tooling. `python3 ci/broad_check.py` is green (fmt, clippy `-D warnings`, tests). `deny.toml`
   bans the async and heavy crates. Budget and reproducible-build scripts exist.

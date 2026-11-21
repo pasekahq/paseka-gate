@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pasekahq.example.org/contracts/v1/wire/key-revoke.schema.json",
+  "title": "data of a key.revoke envelope, signed with the key it revokes",
+  "type": "object",
+  "required": [
+    "revoked_key"
+  ],
+  "properties": {
+    "revoked_key": {
+      "$ref": "../common.schema.json#/$defs/key_id",
+      "description": "The key declared compromised: the sender's current key, which signs the envelope."
+    },
+    "replacement": {
+      "type": "object",
+      "description": "The key that replaces the revoked one; absent when the revocation only removes authority.",
+      "required": [
+        "new_key",
+        "next_key_sha256",
+        "proof"
+      ],
+      "properties": {
+        "new_key": {
+          "$ref": "../common.schema.json#/$defs/key_id",
+          "description": "The key that becomes current."
+        },
+        "next_key_sha256": {
+          "$ref": "../common.schema.json#/$defs/sha256",
+          "description": "SHA-256 of the 32-byte public key that will follow new_key."
+        },
+        "proof": {
+          "$ref": "../common.schema.json#/$defs/jws",
+          "description": "JWS typ paseka-key-replacement+jwt, kid new_key, payload per key-replacement.schema.json."
+        }
+      }
+    }
+  }
+}

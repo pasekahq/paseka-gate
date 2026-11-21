@@ -237,10 +237,12 @@ envelope happen in one transaction; delivery is at least once with receiver dedu
 - CA-46 Kill the gate between decision and delivery, restart. Result: exactly one envelope
   delivered, one inbox item at the peer.
 
-SP-22 Key continuity (ADR 0013). A peer address keeps its recorded key until a `key.rotate`
-signed by that key, with a proof by the new key that matches the commitment on record, replaces
-it, or the receiving owner confirms the change; a replaced key stays valid only until its
-`previous_valid_until`.
+SP-22 Key continuity (ADR 0013). A peer address keeps its recorded key until a `key.rotate` or a
+`key.revoke` replacement whose new key matches the commitment on record replaces it, or the
+receiving owner confirms the change after comparing the key-change short authentication string.
+Holding the old key alone never installs a key. A replaced key stays valid only until its
+`previous_valid_until`; a `key.revoke` signed by the current key ends the validity of the current
+and the previous key at once.
 - CA-48 Key substitution: a `key.rotate` whose proof is not signed by `new_key`
   (`bad_signature`); recording an already recorded address with another key, or one of the
   gate's own addresses as a peer (`conflict`). Result: the recorded key is unchanged.
@@ -249,6 +251,14 @@ it, or the receiving owner confirms the change; a replaced key stays valid only 
 - CA-50 Use of the previous key once `previous_valid_until` is reached: an envelope signed with
   it (`bad_signature`), and a mandate signed with it inside an envelope signed with the current
   key (`mandate_invalid`). Result: rejected.
+- CA-51 The holder of a stolen current key sends `key.rotate` to their own key (no commitment
+  match) and `key.revoke` with their own key as replacement. Result: neither installs the thief's
+  key, which stays only a pending change for the receiving owner; envelopes signed with it get
+  `bad_signature`; the genuine owner's later commitment-matching `key.rotate` installs the
+  committed key and drops the thief's pending change.
+- CA-52 Use of a revoked key: after a `key.revoke` without replacement, an envelope signed with
+  the revoked key, and one signed with the previous key while its `previous_valid_until` has not
+  been reached. Result: `bad_signature` for both.
 
 Old attack ideas (ADR 0009). The consent-forgery suite CF-1 to CF-15 of the old gate maps to:
 CF-1, CF-6, CF-9 and CF-13 (agent-written approvals, proof fields, evidence) to CA-1, CA-2,

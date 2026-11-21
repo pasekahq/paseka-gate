@@ -21,7 +21,8 @@
         "paseka-envelope+jwt",
         "paseka-receipt+jwt",
         "paseka-pair+jwt",
-        "paseka-key-proof+jwt"
+        "paseka-key-proof+jwt",
+        "paseka-key-replacement+jwt"
       ]
     }
   },

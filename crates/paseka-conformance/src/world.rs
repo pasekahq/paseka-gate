@@ -7,7 +7,7 @@ use paseka_core::draft::{DecisionAttempt, Draft, RequestSeed, Revision};
 use paseka_core::envelope::{PeerState, Receiver, seal};
 use paseka_core::hash::{Release, content_sha256, release_digest, sha256};
 use paseka_core::mandate::{self, CLOSED_TTL_SECS};
-use paseka_core::peer::{Grace, PeerKeys, key_rotate_data, key_sha256};
+use paseka_core::peer::{Grace, PeerKeys, key_revoke_data, key_rotate_data, key_sha256};
 use paseka_core::risk::Required;
 use paseka_core::token::key_id;
 use paseka_proto::draft::{DraftKind, DraftState};
@@ -142,7 +142,7 @@ impl Wire {
     pub(crate) fn new() -> Self {
         let alice = key(1);
         let mut recv = Receiver::default();
-        recv.add_tenant(tenant(2));
+        recv.add_tenant(tenant(2)).expect("bob is a tenant");
         let keys = PeerKeys::paired(
             alice.verifying_key(),
             Some(key_sha256(&key(ALICE_NEXT).verifying_key())),
@@ -241,6 +241,29 @@ pub(crate) fn sealed(signer: &SigningKey, env: &Envelope<MessageData>) -> String
 /// Grace alice grants her replaced key: one day.
 pub(crate) fn grace() -> Grace {
     Grace::days(1).expect("one day is a valid grace")
+}
+
+/// alice's `key.revoke` to bob created at [`NOW`], declaring key `signer` compromised and sealed
+/// by it, with the replacement key `new` committing to key `next`, signed by itself, if any.
+pub(crate) fn revocation(signer: u8, replacement: Option<(u8, u8)>, id: u8) -> String {
+    let new = replacement.map(|(new, next)| (key(new), key_sha256(&key(next).verifying_key())));
+    let data = key_revoke_data(
+        &address(1),
+        &key(signer).verifying_key(),
+        new.as_ref().map(|(k, next)| (k, *next)),
+    );
+    seal(
+        &key(signer),
+        &Envelope {
+            v: V1,
+            iss: address(1),
+            aud: address(2),
+            id: event(id),
+            kind: EventType::KeyRevoke,
+            iat: NOW,
+            data,
+        },
+    )
 }
 
 /// alice's `key.rotate` to bob created at [`NOW`], sealed by `signer`: it names key `new`, its

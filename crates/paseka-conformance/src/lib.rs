@@ -104,6 +104,8 @@ attacks! {
     "CA-48" "SP-22" "key substitution: rotation proof not by new_key, recorded address re-paired with another key" => wire::ca48_key_substitution;
     "CA-49" "SP-22" "key.rotate signed by a key that is not the address's current key" => wire::ca49_rotation_not_by_current_key;
     "CA-50" "SP-22" "peer's previous key used after previous_valid_until" => wire::ca50_previous_key_after_grace;
+    "CA-51" "SP-22" "holder of a stolen key moves the peer to their own key by key.rotate or key.revoke" => wire::ca51_thief_moves_peer_to_own_key;
+    "CA-52" "SP-22" "peer's revoked key, or the previous key whose grace a revocation ended, used" => wire::ca52_revoked_key_used;
 }
 
 /// Runs every attack.

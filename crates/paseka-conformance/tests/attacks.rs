@@ -10,8 +10,8 @@ fn check(id: &str) {
 }
 
 #[test]
-fn attacks_are_numbered_ca_1_to_50_in_order() {
-    assert_eq!(ATTACKS.len(), 50);
+fn attacks_are_numbered_ca_1_to_52_in_order() {
+    assert_eq!(ATTACKS.len(), 52);
     for (i, a) in ATTACKS.iter().enumerate() {
         assert_eq!(a.id, format!("CA-{}", i + 1));
     }
@@ -279,4 +279,14 @@ fn ca49_rotation_not_by_current_key() {
 #[test]
 fn ca50_previous_key_after_grace() {
     check("CA-50");
+}
+
+#[test]
+fn ca51_thief_moves_peer_to_own_key() {
+    check("CA-51");
+}
+
+#[test]
+fn ca52_revoked_key_used() {
+    check("CA-52");
 }
