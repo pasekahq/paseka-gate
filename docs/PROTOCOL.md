@@ -802,7 +802,9 @@ For each `message` event the receiver MUST verify the mandate (SP-14) and reject
    receiver verifies it;
 9. the `jti` was never accepted before from this `iss` address (`mandate_replay` otherwise).
 
-The receiver shows the sender's level and channel with the inbox item.
+The receiver shows the sender's level and channel with the inbox item. These checks prove that
+the sending gate signed the release, not that its owner approved at `level`: the receiver takes
+the level on the sending gate's word (`docs/THREAT-MODEL.md` §7, the sending gate's level claim).
 
 ## 9. Trust levels and shelves
 
