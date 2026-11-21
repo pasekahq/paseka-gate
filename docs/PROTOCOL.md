@@ -457,15 +457,16 @@ as further detectors of the same registry.
 
 Detectors (`paseka_core::risk`):
 
-- One-time codes: a code of 4 to 8 digits that is not a year from 1900 to 2099, or two groups of
-  3 or 4 digits joined by one space or hyphen, within four words of a code keyword, and every
-  `otpauth:` URI. Keywords: `code`, `codes`, `otp`, `2fa`, `mfa`, `totp`, `passcode`,
-  `verification`, `verify`, `one-time`, the Russian forms of `код`, `отп`, `2фа`, and words
-  starting with `подтвержд`, `верификац` or `одноразов`. A keyword next to a qualifier that names
-  a code granting nothing (`zip`, `postal`, `post`, `area`, `country`, `error`, `exit`,
+- One-time codes: a code of 4 to 8 digits, or two groups of 3 or 4 digits joined by one space or
+  hyphen, within four words of a code keyword, and every `otpauth:` URI. A year from 1900 to 2099 is
+  a code only directly after a keyword, or after a keyword and one of `is`, `=`, `-`, `это` or an em
+  dash (`code: 1984`, `your code is 2048`). Keywords: `code`, `codes`, `otp`, `2fa`, `mfa`, `totp`,
+  `passcode`, `verification`, `verify`, `one-time`, the Russian forms of `код`, `отп`, `2фа`, and
+  words starting with `подтвержд`, `верификац` or `одноразов`. A keyword next to a qualifier that
+  names a code granting nothing (`zip`, `postal`, `post`, `area`, `country`, `error`, `exit`,
   `status`, `source`, `promo`, `discount`, `coupon`, `почтовый`, `ошибки`, `региона`, `страны`,
-  `города`) does not count. A digit group next to another digit group is part of a longer
-  number, not a code.
+  `города`) does not count. A digit group next to another digit group is part of a longer number,
+  not a code.
 - Named vault secrets: the owner registers a source of kind `VaultSecret` and its value, at least
   8 characters. An exact, case-sensitive occurrence of the value in the body or in the text of
   an attachment is a hit. Flags, notices and the journal name the source, never the value.

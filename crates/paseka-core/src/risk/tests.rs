@@ -388,6 +388,36 @@ fn numbers_without_a_code_keyword_nearby_are_no_one_time_code() {
 }
 
 #[test]
+fn a_year_like_code_directly_after_a_code_keyword_is_a_one_time_code() {
+    for (text, code) in [
+        ("your code is 2048", "2048"),
+        ("code: 1984", "1984"),
+        ("код: 1984", "1984"),
+        ("Ваш код \u{2014} 2010", "2010"),
+        ("OTP 2024", "2024"),
+        ("2FA: 1999, do not share it", "1999"),
+        ("verification code = 2099.", "2099"),
+    ] {
+        assert_eq!(one_time_codes_in(text), vec![code], "{text:?}");
+    }
+}
+
+#[test]
+fn a_year_apart_from_a_code_keyword_is_no_one_time_code() {
+    for text in [
+        "we met in 1999",
+        "a customer since 2024",
+        "the code review in 2023 went well",
+        "code is from 1999",
+        "zip code 1999",
+        "error code: 2001",
+        "код ошибки: 2001",
+    ] {
+        assert_eq!(one_time_codes_in(text), Vec::<&str>::new(), "{text:?}");
+    }
+}
+
+#[test]
 fn a_one_time_code_blocks_under_any_decision_approval_or_open_mandate() {
     let mut reg = SourceRegistry::default();
     reg.register(&tenant(1), FILES, SourceKind::Files).unwrap();
