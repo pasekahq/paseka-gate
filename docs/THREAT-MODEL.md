@@ -54,7 +54,9 @@ states who attacks what, what we assume, and which property each conformance att
   owner's Telegram account equals approval (accepted for A1/A2; A2+/A3 exist for the most
   sensitive content).
 - A-4 The owner reads the approval surface before approving. Consent covers what was shown.
-- A-5 The gate host is honest: the owner for self-host, HO for hosted tenants.
+- A-5 The gate host is honest: the owner for self-host, HO for hosted tenants. A receiving gate
+  believes the approval level a sending gate states in its mandate (§7, the sending gate's level
+  claim).
 - A-6 Ed25519, SHA-256 and HMAC-SHA-256 are secure. The OS CSPRNG is sound.
 - A-7 Clocks of gates are within 30 s of true time (NTP). Windows below tolerate 300 s.
 - A-8 Once delivered, content is under the recipient's control. The gate protects what leaves,
@@ -355,6 +357,16 @@ CA-22 and CA-41.
 - A malicious hosting operator for hosted tenants. Hosted tenants trust HO explicitly; the
   mitigations are verification and migration paths, not cryptographic isolation from HO. The PIN,
   its pepper and the hosted password default give no protection against HO either (A-9).
+- A sending gate's false claim of the approval level. The receiving gate verifies that the closed
+  mandate is signed by a current key of the sender's address and binds the release digest of the
+  delivered body, attachments, recipient and thread (SP-14, PROTOCOL §8.4). It takes on trust the
+  sending gate's claim that its owner approved at A1, A2 or A2+ with the PIN, and in the marked
+  case that the strongest available channel replaced a higher required level (PROTOCOL §6.2):
+  `level`, `proof` and the evidence they commit to are produced and signed by that gate, not by
+  its owner. Telegram evidence would not change this for the peer, which has no reason to trust
+  the sender's bot binding. A malicious or compromised sending gate, or HO for a hosted sender,
+  can state any level for content its owner never approved at that level. Owner attestation, the
+  owner's own signature for A2+ and A3, comes after the MVP.
 - Telegram itself: its servers, clients and the security of the owner's Telegram account (A-3).
 - Compromise of the owner's devices, or of the gate host for self-host.
 - What a peer does with content after delivery (A-8).

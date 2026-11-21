@@ -83,6 +83,8 @@ get the S2 flag, which is not a registry source.
   the Mini App as hosted or guest tenants.
 - The biometric A2+ channel (BiometricManager with a WebCrypto key) and A3 (passkey in an
   external browser).
+- Owner attestation: the owner's own signature for A2+ and A3, so a receiving gate can verify the
+  approval level instead of taking it on the sending gate's word.
 - Slack, ntfy, CLI with a local key, e-mail magic link; an independent approval web page.
 - T3 free text on allowed topics, with digest, spike alerts and kill switch.
 - Fuzzy checks: embedding similarity and a classifier via qb (raise only).
