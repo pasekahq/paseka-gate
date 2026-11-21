@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use paseka_proto::envelope::{Event, KeyProof, KeyReplacementProof, Receipt, WireError};
 use paseka_proto::evidence::{
     OpenMandateEvidence, TelegramButtonEvidence, TelegramMiniAppEvidence,
+    TelegramMiniAppPinEvidence,
 };
 use paseka_proto::jws::Header;
 use paseka_proto::mandate::{ClosedMandate, OpenMandate};
@@ -33,6 +34,10 @@ const WRITER_ONLY: &[(&str, &str)] = &[
     (
         "evidence/telegram-miniapp/invalid/edited-without-hash.json",
         "gate writes the edited hash",
+    ),
+    (
+        "evidence/telegram-miniapp-pin/invalid/contains-pin.json",
+        "gate never writes the PIN",
     ),
     (
         "evidence/telegram-button/invalid/level-a2.json",
@@ -115,6 +120,7 @@ fn parse(schema: &str, b: &[u8]) -> Option<Result<(), String>> {
         s if s.starts_with("agent/") && s.ends_with(".output") => ok::<DraftView>(b),
         "evidence/telegram-button" => ok::<TelegramButtonEvidence>(b),
         "evidence/telegram-miniapp" => ok::<TelegramMiniAppEvidence>(b),
+        "evidence/telegram-miniapp-pin" => ok::<TelegramMiniAppPinEvidence>(b),
         "evidence/open-mandate" => ok::<OpenMandateEvidence>(b),
         "mandate/closed" => ok::<ClosedMandate>(b),
         "mandate/open" => ok::<OpenMandate>(b),

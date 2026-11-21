@@ -29,6 +29,7 @@ the receiving gate, which cannot verify Telegram's attestation of another tenant
 - One JWS implementation in the audited core; the test vectors in
   `contracts/fixtures/vectors/digests.json` fix the bytes.
 - A receiving gate trusts the sender gate's statement about consent; it verifies binding,
-  freshness and single use, not the human act. Owner-key signatures arrive with A2+ and A3.
+  freshness and single use, not the human act. Owner-key signatures arrive with the biometric
+  A2+ channel and A3.
 - A later version can move evidence fields into disclosures under `_sd` without changing the
   outer format.

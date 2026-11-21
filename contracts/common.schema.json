@@ -116,6 +116,7 @@
         "open-mandate",
         "telegram-button",
         "telegram-miniapp",
+        "telegram-miniapp-pin",
         "telegram-miniapp-biometric",
         "passkey"
       ]

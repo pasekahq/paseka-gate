@@ -74,7 +74,7 @@ attacks! {
     "CA-18" "SP-7" "classifier says safe for free text" => policy::ca18_classifier_says_safe;
     "CA-19" "SP-7" "canary in the body, obfuscated or base64-encoded" => policy::ca19_canary_blocks;
     "CA-20" "SP-7" "owner edit adds a canary and approves" => policy::ca20_owner_edit_with_canary;
-    "CA-21" "SP-7" "required level has no configured channel" => consent::ca21_level_without_channel;
+    "CA-21" "SP-7" "required level above every configured channel" => consent::ca21_level_above_every_channel;
     "CA-22" "SP-8" "agent reads detector results from tool output" => policy::ca22_no_oracle;
     "CA-23" "SP-9" "security settings edited in the config after the ceremony" => || Outcome::Pending(NEEDS_SERVER);
     "CA-24" "SP-9" "agent tool used as a side path to settings" => policy::ca24_no_settings_side_path;

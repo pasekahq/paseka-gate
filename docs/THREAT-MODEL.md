@@ -138,13 +138,18 @@ consent chat, through the tenant's consent bot, can decide.
 - CA-17 initData signed for another bot id. Result: rejected.
 
 SP-7 Monotonic risk. Evaluation stages only raise the level. Free text to a peer is at least A1
-without an open mandate. A canary blocks even with owner approval.
+without an open mandate. A canary blocks even with owner approval. A level above every configured
+channel keeps its value and is approved only through the strongest configured channel, marked for
+the owner; a weaker channel never decides a request that a configured channel satisfies
+(ADR 0015).
 - CA-18 Configure the classifier stub to answer "safe" for free text. Result: level A1.
 - CA-19 Put a canary in the body, in an attachment, and base64-encoded in the body. Result:
   `blocked`, owner alert, tripwire mode on.
 - CA-20 Owner edits a draft in the Mini App to include a canary and approves. Result: `blocked`.
-- CA-21 Require a level with no configured channel (fingerprint hit in MVP). Result: `blocked`
-  with reason `policy`, never satisfied by a weaker channel.
+- CA-21 Require a level above every configured channel (A3 with the MVP channels). Result: not
+  blocked; the request keeps level A3, goes through `telegram-miniapp-pin` marked as above the
+  available channels, is rejected through `telegram-miniapp`, and an approval through the PIN
+  channel records level A2+ with required level A3.
 - CA-47 Approve a request that requires A2 through the A1 button (a forged or replayed
   callback included). Result: rejected; the request stays open.
 

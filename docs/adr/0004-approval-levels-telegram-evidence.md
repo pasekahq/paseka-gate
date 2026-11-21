@@ -18,16 +18,17 @@ signature that can be verified with Telegram's public key alone.
   produce a new hash. `initData` is verified by the Ed25519 third-party signature, not only the
   HMAC; `auth_date` must be fresh within a strict window; the gate binds request id, content hash
   and nonce.
-- A2+ (later): Mini App plus BiometricManager unlocking a non-extractable WebCrypto key that signs
-  hash and nonce. No hardware attestation is claimed.
+- A2+: Mini App plus a second factor. In the MVP the owner's PIN or password, entered only in
+  the Mini App (ADR 0015). Later a BiometricManager-unlocked non-extractable WebCrypto key that
+  signs hash and nonce, with the PIN as fallback. No hardware attestation is claimed.
 - A3 (later): WebAuthn passkey in an external browser opened through `openLink`; the signature
   covers the hash.
-- MVP ships A0, A1 and A2. Later channels (Slack, ntfy, CLI with a local key held away from the
+- MVP ships A0, A1, A2 and A2+ with PIN. Later channels (Slack, ntfy, CLI with a local key held away from the
   agent, e-mail magic link as a weak fallback) produce the same proof format.
 - Approval surfaces are non-agentic: no model renders or summarizes what the owner approves.
 
 ## Consequences
 - Telegram is a trusted party for A1 and A2; a Telegram account takeover equals approval. This is
-  accepted for the threat model; the most sensitive content is routed to A2+ or A3 once they
-  exist, and until then is blocked or held for A2 with highlights.
+  accepted for the threat model; the most sensitive content is routed to A2+, and a level above
+  every configured channel goes through the strongest one (ADR 0015).
 - The consent bot token is a gate secret with the same protection as the gate signing key.

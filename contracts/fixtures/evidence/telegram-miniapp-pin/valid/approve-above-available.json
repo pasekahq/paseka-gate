@@ -1,0 +1,20 @@
+{
+  "v": 1,
+  "channel": "telegram-miniapp-pin",
+  "level": "A2+",
+  "tenant": "t_01JD0000000000000000000001",
+  "request_id": "r_01JD0000000000000000000001",
+  "nonce": "AAECAwQFBgcICQoLDA0ODw",
+  "challenge": "2018bd9bd90ef32ce9d112d525e830e9c64096a834a0ec285ec7686cd834308d",
+  "decision": "approve",
+  "received_at": 1794268830,
+  "required_level": "A3",
+  "bot_id": 1000001,
+  "approver_user_id": 2000001,
+  "init_data": "auth_date=1794268810&hash=00&signature=AA&user=%7B%22id%22%3A2000001%7D",
+  "init_data_sha256": "e44ee26389ad6714f3d382592336f344b36ac7ff2f140cb0d28c5e2ae8d8a23a",
+  "auth_date": 1794268810,
+  "telegram_env": "production",
+  "edited": false,
+  "pin_verified_at": 1794268825
+}

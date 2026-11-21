@@ -7,6 +7,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod channel;
 pub mod draft;
 pub mod envelope;
 pub mod hash;

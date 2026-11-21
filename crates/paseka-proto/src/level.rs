@@ -14,7 +14,7 @@ pub enum Level {
     A1,
     /// Mini App showing the exact bytes, verified by the Ed25519 third-party signature.
     A2,
-    /// Mini App plus a biometric-unlocked software key.
+    /// Mini App plus a second factor: a PIN or password, later a biometric-unlocked key.
     #[serde(rename = "A2+")]
     A2Plus,
     /// Passkey in an external browser.

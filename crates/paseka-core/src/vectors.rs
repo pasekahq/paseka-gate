@@ -1,6 +1,6 @@
 //! Generator of `contracts/fixtures/vectors/digests.json`, of the closed mandate inside the
-//! `wire/envelope` fixtures, of the `mandate/closed` and `evidence/telegram-button` fixtures, of
-//! the `key.rotate`, `key.revoke`, `wire/key-proof` and `wire/key-replacement` fixtures, and of
+//! `wire/envelope` fixtures, of the `mandate/closed`, `evidence/telegram-button` and
+//! `evidence/telegram-miniapp-pin` fixtures, of the `key.rotate`, `key.revoke`, `wire/key-proof` and `wire/key-replacement` fixtures, and of
 //! the `pairing/accept` fixture with a malformed commitment, from the synthetic seeds.
 //!
 //! `cargo test -p paseka-core --lib vectors::` fails unless those files are exactly the
@@ -27,7 +27,10 @@ use paseka_proto::envelope::{
     Envelope, EventType, KeyProof, KeyReplacementProof, KeyRevokeData, KeyRotateData, MessageData,
     Receipt, ReceiptStatus, WireAttachment,
 };
-use paseka_proto::evidence::{Channel, Decision, RequestBinding, TelegramButtonEvidence};
+use paseka_proto::evidence::{
+    Channel, Decision, MiniAppFields, RequestBinding, TelegramButtonEvidence, TelegramEnv,
+    TelegramMiniAppPinEvidence,
+};
 use paseka_proto::jws::Typ;
 use paseka_proto::mandate::{AttachmentMeta, ClosedKind, ClosedMandate, ClosedProof};
 use paseka_proto::pairing::{PairAccept, PairAcceptType, PairRequest, PairRequestType};
@@ -372,6 +375,7 @@ fn evidence(alice: &Party, challenge: &ChallengeVector) -> TelegramButtonEvidenc
             challenge: challenge.challenge,
             decision: Decision::Approve,
             received_at: AT,
+            required_level: None,
         },
         bot_id: 1_000_001,
         chat_id: 2_000_001,
@@ -825,6 +829,74 @@ fn telegram_button_fixtures(e: &TelegramButtonEvidence) -> Vec<(PathBuf, String)
     ]
 }
 
+/// A2+ evidence for `challenge`'s request decided through the PIN channel when the request
+/// required `required`: A2+, or A3 above every MVP channel.
+fn miniapp_pin_evidence(challenge: &ChallengeInput, required: Level) -> TelegramMiniAppPinEvidence {
+    let init_data = format!(
+        "auth_date={}&hash=00&signature=AA&user=%7B%22id%22%3A2000001%7D",
+        AT - 20
+    );
+    TelegramMiniAppPinEvidence {
+        v: 1,
+        channel: Channel::TelegramMiniAppPin,
+        level: Level::A2Plus,
+        binding: RequestBinding {
+            tenant: challenge.tenant.clone(),
+            request_id: challenge.request_id.clone(),
+            nonce: challenge.nonce.clone(),
+            challenge: approval_challenge(
+                &challenge.tenant,
+                &challenge.request_id,
+                challenge.release_digest,
+                &challenge.nonce,
+                required,
+            ),
+            decision: Decision::Approve,
+            received_at: AT,
+            required_level: (required > Level::A2Plus).then_some(required),
+        },
+        miniapp: MiniAppFields {
+            bot_id: 1_000_001,
+            approver_user_id: 2_000_001,
+            init_data_sha256: sha256(init_data.as_bytes()),
+            init_data,
+            auth_date: AT - 20,
+            telegram_env: TelegramEnv::Production,
+            edited: false,
+            edited_content_sha256: None,
+        },
+        pin_verified_at: AT - 5,
+    }
+}
+
+/// The `evidence/telegram-miniapp-pin` fixtures: an A2+ request, an A3 request above every MVP
+/// channel, and one broken field per invalid case.
+fn telegram_miniapp_pin_fixtures(challenge: &ChallengeInput) -> Vec<(PathBuf, String)> {
+    let dir = fixtures("evidence/telegram-miniapp-pin");
+    let a2plus = miniapp_pin_evidence(challenge, Level::A2Plus);
+    let a3 = miniapp_pin_evidence(challenge, Level::A3);
+    let value = serde_json::to_value(&a2plus).expect("evidence serialises");
+    let mut no_pin_check = value.clone();
+    no_pin_check
+        .as_object_mut()
+        .expect("evidence is an object")
+        .remove("pin_verified_at");
+    let mut with_pin = value;
+    with_pin["pin"] = "246810".into();
+    vec![
+        (dir.join("valid/approve.json"), json_file(&a2plus)),
+        (
+            dir.join("valid/approve-above-available.json"),
+            json_file(&a3),
+        ),
+        (
+            dir.join("invalid/missing-pin-check.json"),
+            json_file(&no_pin_check),
+        ),
+        (dir.join("invalid/contains-pin.json"), json_file(&with_pin)),
+    ]
+}
+
 /// `text` of an envelope fixture with its `data.mandate`, if any, replaced by `mandate`; a
 /// fixture whose mandate lacks the SD-JWT `~` keeps lacking it.
 fn with_mandate(text: &str, mandate: &str) -> String {
@@ -853,6 +925,9 @@ fn outputs() -> Vec<(PathBuf, String)> {
         &vectors.signing_keys.bob.key_id,
     ));
     out.extend(telegram_button_fixtures(&vectors.signed.evidence));
+    out.extend(telegram_miniapp_pin_fixtures(
+        &vectors.approval_challenge[0].input,
+    ));
     for dir in ["valid", "invalid"] {
         let fixtures = wire_fixtures().join("envelope").join(dir);
         for entry in std::fs::read_dir(fixtures).expect("fixture dir") {

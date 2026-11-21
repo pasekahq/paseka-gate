@@ -111,8 +111,9 @@ approval_challenge = SHA-256(
 )
 ```
 
-`level` is the required level string (`A1`, `A2`, `A2+`, `A3`). A3 and A2+ channels sign these
-32 bytes; A1 and A2 evidence records them. Through `release_digest` the challenge also binds the
+`level` is the required level string (`A1`, `A2`, `A2+`, `A3`), also when it is above every
+configured channel (§6.2). Key-based channels (A3 passkey, later the biometric A2+ channel) sign
+these 32 bytes; A1, A2 and PIN evidence records them. Through `release_digest` the challenge also binds the
 draft `expires`, so the owner approves the draft's lifetime with its content.
 
 ## 4. Drafts
@@ -138,7 +139,7 @@ release digest of every revision (§3.2). The lifetime is an owner setting from 
 | `denied` | The owner refused | yes |
 | `expired` | The prompt TTL, the mandate `exp` or the draft `expires` passed | yes |
 | `withdrawn` | The agent withdrew it | yes |
-| `blocked` | Policy forbids release (canary, unavailable level, hard rule) | yes |
+| `blocked` | Policy forbids release (canary, hard rule) | yes |
 
 Transitions:
 
@@ -283,11 +284,18 @@ Rules:
   shares too: a T0 peer gets nothing without consent.
 - A fuzzy stage that fails or times out adds the flag `fuzzy_unavailable` and no floor. An exact
   stage that fails blocks the draft with reason `internal`.
-- An owner edit is re-evaluated. A canary still blocks (CA-20). If the new level exceeds the
-  channel the owner is using, the edit becomes a new revision with a new request.
-- If no configured channel satisfies the required level, the draft is `blocked` (reason
-  `policy`) and the owner is notified. A weaker channel MUST NOT satisfy a stronger requirement.
-  With the MVP channels this blocks S8 and S9 hits until the owner changes the rule.
+- An owner edit is re-evaluated. A canary still blocks (CA-20). If the channel the owner is
+  using cannot decide the new revision's request (§6.3), the edit becomes a new revision with a
+  new request.
+- A required level is never unavailable. The approval request goes through the weakest
+  configured channel that satisfies the level, and only a channel that satisfies the level can
+  decide it. If no configured channel satisfies it, the draft is not blocked: the request keeps
+  the required level, goes through the strongest configured channel, and is marked as above the
+  available channels; only a channel at that channel's level can decide it. A weaker channel
+  MUST NOT decide a request that a configured channel satisfies. The owner's prompt shows the
+  required level, the channel, and in the marked case that the strongest available protection
+  replaces the required one. In the MVP an A3 requirement goes through `telegram-miniapp-pin`
+  (A2+).
 - The owner can change default floors only through consent in the Mini App (§9.4). The S1 floor
   for free text, the S7 block and the no-flag condition of S12 are not configurable.
 
@@ -298,8 +306,14 @@ Rules:
 | A0 | open mandate |
 | A1 | `telegram-button`, and every channel below |
 | A2 | `telegram-miniapp`, and every channel below |
-| A2+ | `telegram-miniapp-biometric`, `passkey` |
-| A3 | `passkey` |
+| A2+ | `telegram-miniapp-pin`, `telegram-miniapp-biometric` (later), and every channel below |
+| A3 | `passkey` (later) |
+
+A channel's level is the row that names it. The selection rule of §6.2 is
+`paseka_core::channel::Channels::select`. Evidence records the channel's own level; in the
+marked case it adds `required_level`, the level the request required. The closed mandate's
+`level` is the required level, or in the marked case the level of the strongest configured
+channel, so `level` and `proof.channel` always agree (§8.4).
 
 ## 7. Approval channels and evidence
 
@@ -316,7 +330,8 @@ A decision is accepted only when all hold:
    unused;
 2. the draft is in `awaiting_consent` and the request's revision is current;
 3. the stored release digest equals the digest recomputed from the stored revision;
-4. the channel satisfies the request's level (§6.3);
+4. the channel satisfies the request's level (§6.3), or, for a request marked as above the
+   available channels (§6.2), the level of the strongest configured channel;
 5. the approver is a configured approver of the tenant.
 
 On approval the gate consumes the nonce, stores the evidence object, issues the closed mandate
@@ -381,19 +396,37 @@ The gate verifies initData as follows; every step MUST pass:
 7. A decision consumes the initData: the gate records `SHA-256(initData)` until it leaves the
    window and rejects reuse (CA-11). Review fetches do not consume it.
 8. `request_id` and `nonce` identify a live request of the tenant (§7.1), `release_digest`
-   equals the stored one, and the request's level is A2 or lower.
+   equals the stored one, and `telegram-miniapp` may decide the request (§7.1 item 4).
 
 With `edited_body` the gate creates a new owner-authored revision, re-evaluates it (§6.2), and,
-if the new level is A2 or lower and nothing blocks, treats the decision as approval of that
-revision; the page MUST then have sent the release digest of the edited content. The evidence
+if nothing blocks and the channel may decide the new revision's request, treats the decision as
+approval of that revision; the page MUST then have sent the release digest of the edited content. The evidence
 records the raw initData, its hash, `auth_date`, approver user id, bot id, decision, challenge,
 whether the content was edited and the edited content hash.
 
-### 7.5 A2+: `telegram-miniapp-biometric` (later)
+### 7.5 A2+: `telegram-miniapp-pin`
 
-A non-extractable WebCrypto Ed25519 or P-256 key, created in the Mini App, unlocked through
-Telegram `BiometricManager`, registered through an A2 consent. It signs the 32-byte approval
-challenge. Evidence: key id, algorithm, signature, and the A2 fields. No hardware attestation.
+The A2 Mini App review plus the owner's PIN or password. The PIN is entered only in the Mini
+App, never in chat: the consent bot never asks for it, and the chat prompt of a request that
+needs this channel offers Review only, no Approve.
+
+Flow: the Review button opens the page of §7.4. The page shows everything of §7.4, the required
+level, the channel, and, for a request marked as above the available channels (§6.2), that the
+strongest available protection replaces the required level. After the owner chooses approve or
+deny, the page asks for the PIN and sends it with the decision:
+`POST /app/v1/decision` with `{request_id, nonce, release_digest, decision, edited_body?, pin}`.
+The gate verifies initData by steps 1 to 7 of §7.4, checks the PIN against the tenant's stored
+verifier, and then checks §7.1 with channel `telegram-miniapp-pin`. A wrong PIN refuses the
+decision and leaves the request open. The gate never stores, logs or journals the PIN itself.
+
+Evidence (`contracts/evidence/telegram-miniapp-pin.schema.json`): the A2 fields of §7.4,
+`pin_verified_at` (when the gate accepted the PIN), and `required_level` in the marked case. It
+never contains the PIN, the password or any value derived from them.
+
+Later, `telegram-miniapp-biometric` is a further A2+ channel: a non-extractable WebCrypto Ed25519
+or P-256 key, created in the Mini App, unlocked through Telegram `BiometricManager`, registered
+through an A2 consent. It signs the 32-byte approval challenge. Evidence: key id, algorithm,
+signature, and the A2 fields. No hardware attestation. The PIN stays as the fallback A2+ channel.
 
 ### 7.6 A3: `passkey` (later)
 
@@ -433,7 +466,8 @@ verifier, and the private parts of evidence stay in the journal behind `evidence
 SD-JWT with zero disclosures is a valid SD-JWT, costs one JWS implementation in the audited core,
 and leaves a direct upgrade: later versions can move evidence fields into disclosures under
 `_sd`. The deviation from AP2 is the signer: at A0 to A2 the gate signs on the owner's behalf
-with Telegram's attestation as evidence; from A2+ the owner's own key signs the challenge.
+with Telegram's attestation as evidence; with the biometric A2+ channel and A3 the owner's own
+key signs the challenge.
 
 ### 8.2 Closed mandate
 

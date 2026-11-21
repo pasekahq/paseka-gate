@@ -1,10 +1,13 @@
 //! Deterministic fixtures for unit tests.
 
 use ed25519_dalek::SigningKey;
+use paseka_proto::evidence::Channel;
 use paseka_proto::{
     Address, DraftId, EventId, Nonce, PairingId, PeerHandle, RequestId, Sha256, TenantId, ThreadId,
 };
 use serde_json::Value;
+
+use crate::channel::Channels;
 
 /// The protocol test vectors, written by the generator in `vectors.rs`.
 pub(crate) const VECTORS_PATH: &str = concat!(
@@ -60,6 +63,16 @@ pub(crate) fn peer(s: &str) -> PeerHandle {
 
 pub(crate) fn nonce(i: u8) -> Nonce {
     Nonce::new(format!("nonce{i:0>16}A")).unwrap()
+}
+
+/// The MVP approval channels: button, Mini App, Mini App with PIN.
+pub(crate) fn mvp_channels() -> Channels {
+    Channels::new(vec![
+        Channel::TelegramButton,
+        Channel::TelegramMiniApp,
+        Channel::TelegramMiniAppPin,
+    ])
+    .unwrap()
 }
 
 pub(crate) fn key(seed: u8) -> SigningKey {

@@ -2,8 +2,8 @@
 //!
 //! Every revision gets its own approval request; a new revision, withdrawal, denial or expiry
 //! revokes it. A decision is accepted only for the live request of the current revision, with
-//! the stored release digest, through a channel strong enough for the required level. A draft
-//! lives until its `expires`; no prompt and no mandate outlive it.
+//! the stored release digest, through a channel that satisfies the request's floor
+//! ([`Selection::floor`]). A draft lives until its `expires`; no prompt and no mandate outlive it.
 
 use std::ops::RangeInclusive;
 
@@ -15,6 +15,7 @@ use paseka_proto::{
     DraftId, Level, MessageId, Nonce, PeerHandle, RequestId, Sha256, TenantId, ThreadId, UnixSecs,
 };
 
+use crate::channel::{Channels, Selection};
 use crate::hash::approval_challenge;
 use crate::risk::Required;
 
@@ -29,6 +30,8 @@ pub struct ApprovalRequest {
     pub nonce: Nonce,
     /// Required level.
     pub level: Level,
+    /// Configured channel the request goes through, marked when `level` is above every one.
+    pub selection: Selection,
     /// Approval challenge (PROTOCOL §3.3).
     pub challenge: Sha256,
     /// Issue time.
@@ -114,7 +117,7 @@ pub enum DecisionError {
     NotAwaiting,
     /// The stored digest differs from the one recomputed or sent by the channel.
     DigestMismatch,
-    /// The channel cannot satisfy the required level.
+    /// The channel does not satisfy the request's floor.
     ChannelTooWeak,
     /// The decider is not an approver of the tenant.
     NotApprover,
@@ -144,8 +147,12 @@ pub struct DecisionAttempt<'a> {
 pub struct Approved {
     /// The consumed nonce.
     pub nonce: Nonce,
-    /// Level satisfied.
+    /// Level the closed mandate records: the request's floor, never above what the channel
+    /// attests.
     pub level: Level,
+    /// Level the request required. Above `level` only when no configured channel satisfied it;
+    /// the evidence then records it as `required_level`.
+    pub required: Level,
     /// Challenge the evidence records.
     pub challenge: Sha256,
     /// Release digest approved.
@@ -177,7 +184,14 @@ pub fn draft_expires(created_at: UnixSecs, lifetime: u64) -> Result<UnixSecs, Li
 }
 
 impl Draft {
-    fn open_request(&mut self, level: Level, seed: RequestSeed, now: UnixSecs, ttl: u64) {
+    fn open_request(
+        &mut self,
+        level: Level,
+        selection: Selection,
+        seed: RequestSeed,
+        now: UnixSecs,
+        ttl: u64,
+    ) {
         let challenge = approval_challenge(
             &self.tenant,
             &seed.request_id,
@@ -190,6 +204,7 @@ impl Draft {
             revision: self.revision,
             nonce: seed.nonce,
             level,
+            selection,
             challenge,
             issued_at: now,
             expires_at: now.saturating_add(ttl).min(self.expires),
@@ -204,13 +219,14 @@ impl Draft {
         self.updated_at = now;
     }
 
-    /// Applies the evaluation of the current revision. `strongest` is the strongest configured
-    /// channel; a requirement above it blocks (PROTOCOL §6.2). An A0 result moves to `approved`;
-    /// the caller then commits the release in the same transaction.
+    /// Applies the evaluation of the current revision. A level is never blocked for want of a
+    /// channel: one above every configured channel goes through the strongest, marked
+    /// (PROTOCOL §6.2). An A0 result moves to `approved`; the caller then commits the release in
+    /// the same transaction.
     pub fn evaluated(
         &mut self,
         required: Required,
-        strongest: Channel,
+        channels: &Channels,
         seed: RequestSeed,
         now: UnixSecs,
         ttl: u64,
@@ -222,10 +238,7 @@ impl Draft {
                 self.request = None;
                 self.state = DraftState::Approved;
             }
-            Required::Level(l) if !strongest.satisfies(l) => {
-                self.terminate(DraftState::Blocked, Reason::Policy, now);
-            }
-            Required::Level(l) => self.open_request(l, seed, now, ttl),
+            Required::Level(l) => self.open_request(l, channels.select(l), seed, now, ttl),
         }
     }
 
@@ -317,7 +330,8 @@ impl Draft {
         if a.release_digest != self.current.release_digest {
             return Err(DecisionError::DigestMismatch);
         }
-        if !a.channel.satisfies(req.level) {
+        let floor = req.selection.floor(req.level);
+        if !a.channel.satisfies(floor) {
             return Err(DecisionError::ChannelTooWeak);
         }
         if !a.approver {
@@ -325,7 +339,8 @@ impl Draft {
         }
         let approved = Approved {
             nonce: req.nonce.clone(),
-            level: req.level,
+            level: floor,
+            required: req.level,
             challenge: req.challenge,
             release_digest: self.current.release_digest,
         };
@@ -386,7 +401,7 @@ impl Draft {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testkit::{draft_id, nonce, peer, request_id, tenant, thread};
+    use crate::testkit::{draft_id, mvp_channels, nonce, peer, request_id, tenant, thread};
 
     fn seed(i: u8) -> RequestSeed {
         RequestSeed {
@@ -421,13 +436,7 @@ mod tests {
             expires: 1000,
             updated_at: 0,
         };
-        d.evaluated(
-            Required::Level(level),
-            Channel::TelegramMiniApp,
-            seed(1),
-            10,
-            100,
-        );
+        d.evaluated(Required::Level(level), &mvp_channels(), seed(1), 10, 100);
         d
     }
 
@@ -465,7 +474,7 @@ mod tests {
         d.revise(1, rev("hi!"), 11).unwrap();
         d.evaluated(
             Required::Level(Level::A1),
-            Channel::TelegramMiniApp,
+            &mvp_channels(),
             seed(2),
             11,
             100,
@@ -544,11 +553,51 @@ mod tests {
     }
 
     #[test]
-    fn a_level_above_every_channel_blocks() {
+    fn a_level_above_every_channel_goes_through_the_strongest_marked() {
+        let d = awaiting(Level::A3);
+        let req = d.request.as_ref().unwrap();
+        assert_eq!(d.state, DraftState::AwaitingConsent);
+        assert_eq!(
+            (req.level, req.selection),
+            (
+                Level::A3,
+                Selection::AboveAvailable(Channel::TelegramMiniAppPin)
+            )
+        );
+        assert_eq!(
+            d.clone().decide(&attempt(&d, Channel::TelegramMiniApp), 20),
+            Err(DecisionError::ChannelTooWeak)
+        );
+        let approved = d
+            .clone()
+            .decide(&attempt(&d, Channel::TelegramMiniAppPin), 20)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            (approved.level, approved.required),
+            (Level::A2Plus, Level::A3)
+        );
+    }
+
+    #[test]
+    fn a_satisfiable_level_is_approved_at_that_level() {
         let d = awaiting(Level::A2Plus);
         assert_eq!(
-            (d.state, d.reason),
-            (DraftState::Blocked, Some(Reason::Policy))
+            d.request.as_ref().unwrap().selection,
+            Selection::Satisfies(Channel::TelegramMiniAppPin)
+        );
+        assert_eq!(
+            d.clone().decide(&attempt(&d, Channel::TelegramMiniApp), 20),
+            Err(DecisionError::ChannelTooWeak)
+        );
+        let approved = d
+            .clone()
+            .decide(&attempt(&d, Channel::TelegramMiniAppPin), 20)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            (approved.level, approved.required),
+            (Level::A2Plus, Level::A2Plus)
         );
     }
 
@@ -570,7 +619,7 @@ mod tests {
         d.revise(1, rev("hi!"), 20).unwrap();
         d.evaluated(
             Required::Level(Level::A1),
-            Channel::TelegramMiniApp,
+            &mvp_channels(),
             seed(2),
             20,
             100,

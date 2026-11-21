@@ -42,6 +42,14 @@
     "received_at": {
       "$ref": "../common.schema.json#/$defs/unix_time"
     },
+    "required_level": {
+      "enum": [
+        "A2",
+        "A2+",
+        "A3"
+      ],
+      "description": "Level the request required. Present only when it is above every configured channel; `level` is then that of the strongest configured channel (PROTOCOL §6.2)."
+    },
     "channel": {
       "const": "telegram-button"
     },
