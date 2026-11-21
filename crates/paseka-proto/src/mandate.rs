@@ -84,6 +84,8 @@ pub struct ClosedMandate {
     pub thread: ThreadId,
     /// Event answered, if any.
     pub in_reply_to: Option<EventId>,
+    /// Expiry of the draft, bound into the release digest; issuance must precede it.
+    pub expires: UnixSecs,
     /// SHA-256 of the exact body bytes.
     pub content_sha256: Sha256,
     /// Attachment metadata in order.

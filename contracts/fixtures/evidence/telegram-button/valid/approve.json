@@ -5,7 +5,7 @@
   "tenant": "t_01JD0000000000000000000001",
   "request_id": "r_01JD0000000000000000000001",
   "nonce": "AAECAwQFBgcICQoLDA0ODw",
-  "challenge": "8fc152ef0e1de0d523e309757f77de424bdffb950671a65f65ebddf1a3f929d6",
+  "challenge": "593386491858e07928aa41f7037f689df1edd6aa2525f36a2e512b4bf52422f4",
   "decision": "approve",
   "received_at": 1794268830,
   "bot_id": 1000001,

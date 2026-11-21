@@ -37,6 +37,8 @@ pub enum MandateInvalid {
     Digest,
     /// Outside its validity window.
     Time,
+    /// Issued at or after the draft `expires`.
+    DraftExpired,
     /// `level` and `proof.channel` are inconsistent.
     Proof,
     /// `jti` seen before from this sender.
@@ -142,6 +144,7 @@ pub fn verify_received(
         to: &env.aud,
         thread: &d.thread,
         in_reply_to: d.in_reply_to.as_ref(),
+        expires: m.expires,
         content_sha256: m.content_sha256,
         attachments: &m.attachments,
     });
@@ -151,6 +154,9 @@ pub fn verify_received(
     let window = m.iat <= env.iat && env.iat <= m.exp && m.exp - m.iat <= CLOSED_TTL_SECS;
     if !window || m.iat > now.saturating_add(SKEW_SECS) {
         return Err(MandateInvalid::Time);
+    }
+    if m.iat >= m.expires {
+        return Err(MandateInvalid::DraftExpired);
     }
     check_proof(&m)?;
     if jtis.seen(receiver_tenant, &m.iss, &m.jti) {
@@ -164,62 +170,107 @@ mod tests {
     use super::*;
     use crate::testkit::{seed_key, vectors};
 
-    #[test]
-    fn issuance_reproduces_the_vector_and_the_receiver_accepts_it() {
-        let v = vectors();
-        let signed = &v["signed"];
-        let claims: ClosedMandate =
-            serde_json::from_value(signed["closed_mandate"]["claims"].clone()).unwrap();
-        let alice = seed_key(&v, "alice");
-        let compact = issue(&alice, &claims);
-        assert_eq!(
-            compact,
-            signed["closed_mandate"]["compact"].as_str().unwrap()
-        );
-        let env: Envelope<MessageData> =
-            serde_json::from_value(signed["envelope"]["payload"].clone()).unwrap();
-        let bob_tenant = TenantId::new("t_01JD0000000000000000000002").unwrap();
-        let now = claims.iat + 1;
-        let mut jtis = JtiBook::default();
-        let alice_keys = PeerKeys::paired(alice.verifying_key(), None);
-        let m = verify_received(&env, &alice_keys, &bob_tenant, &jtis, now).unwrap();
-        jtis.record(&bob_tenant, &m);
-        assert_eq!(
-            verify_received(&env, &alice_keys, &bob_tenant, &jtis, now),
-            Err(MandateInvalid::Replay)
-        );
+    struct Signed {
+        claims: ClosedMandate,
+        env: Envelope<MessageData>,
+        alice: SigningKey,
     }
 
-    #[test]
-    fn a_mandate_whose_tenant_is_not_its_issuer_address_is_refused() {
+    fn signed() -> Signed {
         let v = vectors();
         let signed = &v["signed"];
-        let mut m: ClosedMandate =
-            serde_json::from_value(signed["closed_mandate"]["claims"].clone()).unwrap();
-        let mut env: Envelope<MessageData> =
-            serde_json::from_value(signed["envelope"]["payload"].clone()).unwrap();
-        m.tenant = TenantId::new("t_01JD0000000000000000000003").unwrap();
+        Signed {
+            claims: serde_json::from_value(signed["closed_mandate"]["claims"].clone()).unwrap(),
+            env: serde_json::from_value(signed["envelope"]["payload"].clone()).unwrap(),
+            alice: seed_key(&v, "alice"),
+        }
+    }
+
+    fn bob() -> TenantId {
+        TenantId::new("t_01JD0000000000000000000002").unwrap()
+    }
+
+    fn redigest(m: &mut ClosedMandate) {
         m.release_digest = release_digest(&Release {
             tenant: &m.tenant,
             iss: &m.iss,
             to: &m.to,
             thread: &m.thread,
             in_reply_to: m.in_reply_to.as_ref(),
+            expires: m.expires,
             content_sha256: m.content_sha256,
             attachments: &m.attachments,
         });
-        let alice = seed_key(&v, "alice");
-        env.data.mandate = issue(&alice, &m);
-        let bob_tenant = TenantId::new("t_01JD0000000000000000000002").unwrap();
+    }
+
+    /// Verifies `s` with its mandate replaced by alice's signature over `m`, at `m.iat + 1`.
+    fn verify_claims(s: &Signed, m: &ClosedMandate) -> Result<ClosedMandate, MandateInvalid> {
+        let mut env = s.env.clone();
+        env.data.mandate = issue(&s.alice, m);
+        let keys = PeerKeys::paired(s.alice.verifying_key(), None);
+        verify_received(&env, &keys, &bob(), &JtiBook::default(), m.iat + 1)
+    }
+
+    #[test]
+    fn issuance_reproduces_the_vector_and_the_receiver_accepts_it() {
+        let v = vectors();
+        let s = signed();
+        let compact = issue(&s.alice, &s.claims);
         assert_eq!(
-            verify_received(
-                &env,
-                &PeerKeys::paired(alice.verifying_key(), None),
-                &bob_tenant,
-                &JtiBook::default(),
-                m.iat + 1
-            ),
-            Err(MandateInvalid::Addressing)
+            compact,
+            v["signed"]["closed_mandate"]["compact"].as_str().unwrap()
         );
+        let now = s.claims.iat + 1;
+        let mut jtis = JtiBook::default();
+        let alice_keys = PeerKeys::paired(s.alice.verifying_key(), None);
+        let m = verify_received(&s.env, &alice_keys, &bob(), &jtis, now).unwrap();
+        jtis.record(&bob(), &m);
+        assert_eq!(
+            verify_received(&s.env, &alice_keys, &bob(), &jtis, now),
+            Err(MandateInvalid::Replay)
+        );
+    }
+
+    #[test]
+    fn the_receiver_binds_the_draft_expiry() {
+        let s = signed();
+        let c = &s.claims;
+        let stretched = ClosedMandate {
+            expires: c.expires + 3600,
+            ..c.clone()
+        };
+        let mut late = ClosedMandate {
+            expires: c.iat,
+            ..c.clone()
+        };
+        redigest(&mut late);
+        let mut last_second = ClosedMandate {
+            expires: c.iat + 1,
+            ..c.clone()
+        };
+        redigest(&mut last_second);
+        let cases = [
+            (c.clone(), Ok(())),
+            (last_second, Ok(())),
+            (stretched, Err(MandateInvalid::Digest)),
+            (late, Err(MandateInvalid::DraftExpired)),
+        ];
+        for (m, want) in cases {
+            assert_eq!(
+                verify_claims(&s, &m).map(|_| ()),
+                want,
+                "expires {}",
+                m.expires
+            );
+        }
+    }
+
+    #[test]
+    fn a_mandate_whose_tenant_is_not_its_issuer_address_is_refused() {
+        let s = signed();
+        let mut m = s.claims.clone();
+        m.tenant = TenantId::new("t_01JD0000000000000000000003").unwrap();
+        redigest(&mut m);
+        assert_eq!(verify_claims(&s, &m), Err(MandateInvalid::Addressing));
     }
 }

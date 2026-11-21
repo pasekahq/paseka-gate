@@ -21,8 +21,8 @@ the receiving gate, which cannot verify Telegram's attestation of another tenant
   stays in the issuing gate's journal. Publicly verifiable evidence (A3 passkey assertions) MAY
   be carried inline in `proof.evidence`.
 - The closed mandate binds a release digest over tenant, the addresses of both tenants (ADR
-  0013), thread, reply target, content hash and attachment metadata (PROTOCOL §3.2), not only the
-  content hash.
+  0013), thread, reply target, the draft expiry (ADR 0014), content hash and attachment metadata
+  (PROTOCOL §3.2), not only the content hash.
 - Open mandates never leave the issuing gate.
 
 ## Consequences

@@ -3,7 +3,9 @@
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use ed25519_dalek::SigningKey;
-use paseka_core::draft::{DecisionAttempt, Draft, RequestSeed, Revision};
+use paseka_core::draft::{
+    DRAFT_LIFETIME_DEFAULT, DecisionAttempt, Draft, RequestSeed, Revision, draft_expires,
+};
 use paseka_core::envelope::{PeerState, Receiver, seal};
 use paseka_core::hash::{Release, content_sha256, release_digest, sha256};
 use paseka_core::mandate::{self, CLOSED_TTL_SECS};
@@ -22,6 +24,11 @@ use paseka_proto::{
 pub(crate) const NOW: UnixSecs = 1_794_268_830;
 pub(crate) const TTL: u64 = 3600;
 pub(crate) const BODY: &str = "Bob thinks the plan is fine.\nSee you on Monday.";
+
+/// `expires` of alice's draft created at [`NOW`] under the default lifetime.
+pub(crate) fn expires() -> UnixSecs {
+    draft_expires(NOW, DRAFT_LIFETIME_DEFAULT).expect("the default lifetime is in range")
+}
 
 fn ulid(prefix: &str, i: u8) -> String {
     format!("{prefix}01JD{i:0>22}")
@@ -83,6 +90,7 @@ pub(crate) fn revision(body: &str, attachments: Vec<AttachmentMeta>) -> Revision
             to: &address(2),
             thread: &thread(1),
             in_reply_to: None,
+            expires: expires(),
             content_sha256: content_sha256(body),
             attachments: &attachments,
         }),
@@ -106,6 +114,7 @@ pub(crate) fn draft(body: &str, required: Required) -> Draft {
         reason: None,
         request: None,
         created_at: NOW,
+        expires: expires(),
         updated_at: NOW,
     };
     d.evaluated(required, Channel::TelegramMiniApp, seed(1), NOW, TTL);
@@ -183,6 +192,7 @@ pub(crate) fn mandate_for(data: &MessageData, i: u8) -> ClosedMandate {
         nonce: nonce(i),
         thread: data.thread.clone(),
         in_reply_to: data.in_reply_to.clone(),
+        expires: expires(),
         content_sha256: content,
         release_digest: release_digest(&Release {
             tenant: &tenant(1),
@@ -190,6 +200,7 @@ pub(crate) fn mandate_for(data: &MessageData, i: u8) -> ClosedMandate {
             to: &bob,
             thread: &data.thread,
             in_reply_to: data.in_reply_to.as_ref(),
+            expires: expires(),
             content_sha256: content,
             attachments: &attachments,
         }),

@@ -32,3 +32,4 @@ points to the successor.
 | [0011](0011-peer-turn-launch-profile.md) | Peer turns run under a separate agent launch profile |
 | [0012](0012-mandate-encoding-gate-signed-sd-jwt.md) | Mandates are gate-signed SD-JWTs with zero disclosures; evidence stays behind a hash |
 | [0013](0013-tenant-address-and-key-rotation.md) | A tenant's address is its permanent id; keys rotate under it |
+| [0014](0014-release-digest-binds-draft-expiry.md) | The release digest binds the draft expiry; the closed mandate carries it |

@@ -15,6 +15,7 @@
     "nonce",
     "thread",
     "in_reply_to",
+    "expires",
     "content_sha256",
     "attachments",
     "release_digest",
@@ -61,6 +62,10 @@
           "type": "null"
         }
       ]
+    },
+    "expires": {
+      "$ref": "../common.schema.json#/$defs/unix_time",
+      "description": "Expiry of the draft; bound into the release digest."
     },
     "content_sha256": {
       "$ref": "../common.schema.json#/$defs/sha256"
