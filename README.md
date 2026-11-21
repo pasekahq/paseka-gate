@@ -64,6 +64,8 @@ self-host with one command.
 - [docs/MVP.md](docs/MVP.md): scope, Definition of Done, milestones.
 - [docs/THREAT-MODEL.md](docs/THREAT-MODEL.md) and [docs/PROTOCOL.md](docs/PROTOCOL.md): security
   properties and the normative protocol.
+- [docs/adr/](docs/adr/): decisions.
+- [AGENTS.md](AGENTS.md): rules for coding agents working on this repository.
 
 ## Conformance attacks
 
@@ -73,8 +75,6 @@ CA-23 in M3; CA-44, CA-46 in M4), the journal (CA-45, M2), the consent bot and M
 CA-11, CA-14, CA-16, CA-17, M3), invite codes (CA-35, M4) and an installed gate (CA-42, M5).
 The milestones are those of [docs/MVP.md](docs/MVP.md); the table is in
 [docs/THREAT-MODEL.md](docs/THREAT-MODEL.md) §6.
-- [docs/adr/](docs/adr/): decisions.
-- [AGENTS.md](AGENTS.md): rules for coding agents working on this repository.
 
 ## License
 
