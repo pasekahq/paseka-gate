@@ -14,7 +14,9 @@ use paseka_proto::pairing::{PairAccept, PairRequest};
 use paseka_proto::tools::{
     DraftView, InboxOutput, JournalOutput, Message, PeersOutput, QueueOutput, ToolCall, ToolError,
 };
+use serde::Serialize;
 use serde::de::DeserializeOwned;
+use serde_json::Value;
 
 /// Invalid fixtures whose rule binds writers (the gate) and is enforced in `paseka-core` or the
 /// gate, not by deserialisation. Each entry: fixture path suffix and the enforcing check.
@@ -30,6 +32,10 @@ const WRITER_ONLY: &[(&str, &str)] = &[
     (
         "agent/status.output/invalid/released-without-delivery.json",
         "gate writes delivery",
+    ),
+    (
+        "agent/propose.output/invalid/thread-trust-active-without-end.json",
+        "core::open::thread_trust writes the end with active",
     ),
     (
         "evidence/telegram-miniapp/invalid/edited-without-hash.json",
@@ -197,5 +203,57 @@ fn types_agree_with_contract_fixtures() {
         }
     }
     assert!(checked > 100, "only {checked} fixtures checked");
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+fn without_unknown(v: Value) -> Value {
+    match v {
+        Value::Object(o) => Value::Object(
+            o.into_iter()
+                .filter(|(k, _)| !k.starts_with("x_"))
+                .map(|(k, v)| (k, without_unknown(v)))
+                .collect(),
+        ),
+        Value::Array(a) => Value::Array(a.into_iter().map(without_unknown).collect()),
+        other => other,
+    }
+}
+
+fn round_trip<T: DeserializeOwned + Serialize>(b: &[u8]) -> Result<(), String> {
+    let typed: T = serde_json::from_slice(b).map_err(|e| e.to_string())?;
+    let written = serde_json::to_value(&typed).map_err(|e| e.to_string())?;
+    let read: Value = serde_json::from_slice(b).map_err(|e| e.to_string())?;
+    if written == without_unknown(read) {
+        Ok(())
+    } else {
+        Err(format!("written back as {written}"))
+    }
+}
+
+/// Every valid agent output fixture is written back field for field, minus the `x_` fields a
+/// tolerant reader drops, so no contract field is silently ignored by the types.
+#[test]
+fn agent_outputs_round_trip() {
+    let mut failures = Vec::new();
+    let mut checked = 0;
+    for (schema, valid, path) in fixtures() {
+        if !valid || !schema.starts_with("agent/") || !schema.ends_with(".output") {
+            continue;
+        }
+        let bytes = std::fs::read(&path).expect("fixture bytes");
+        let result = match schema.as_str() {
+            "agent/inbox.output" => round_trip::<InboxOutput>(&bytes),
+            "agent/read.output" => round_trip::<Message>(&bytes),
+            "agent/queue.output" => round_trip::<QueueOutput>(&bytes),
+            "agent/peers.output" => round_trip::<PeersOutput>(&bytes),
+            "agent/journal.output" => round_trip::<JournalOutput>(&bytes),
+            _ => round_trip::<DraftView>(&bytes),
+        };
+        checked += 1;
+        if let Err(e) = result {
+            failures.push(format!("{}: {e}", path.display()));
+        }
+    }
+    assert!(checked > 10, "only {checked} fixtures checked");
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }

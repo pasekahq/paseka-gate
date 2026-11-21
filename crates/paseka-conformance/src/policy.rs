@@ -3,7 +3,7 @@
 
 use std::collections::BTreeSet;
 
-use paseka_core::open::{Candidate, OpenBook, OpenDenied, SlotError};
+use paseka_core::open::{Candidate, OpenBook, OpenDenied, SlotError, thread_trust};
 use paseka_core::risk::{self, CanaryId, OutputKind, OwnerRules, Required};
 use paseka_core::shelf::{ShareError, Shelf, check_share};
 use paseka_core::template::field_ok;
@@ -133,9 +133,18 @@ pub(crate) fn ca22_no_oracle() -> Outcome {
     ];
     let mut d = draft(&format!("x {CANARY}"), Required::Block);
     d.evaluated(Required::Block, &mvp_channels(), seed(1), NOW, TTL);
+    let trust = thread_trust(
+        &OpenBook::default(),
+        &[],
+        &tenant(1),
+        &address(2),
+        &thread(1),
+        false,
+        NOW,
+    );
     let views = [
-        d.view(None),
-        draft(BODY, Required::Level(Level::A2)).view(None),
+        d.view(None, trust),
+        draft(BODY, Required::Level(Level::A2)).view(None, trust),
     ];
     all(views.iter().map(|v| {
         let json = serde_json::to_value(v).expect("view serialises");

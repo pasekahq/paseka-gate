@@ -1,4 +1,5 @@
-//! Open mandates: shape, matching, counters and the one-pending rule (PROTOCOL §8.3, §9.1).
+//! Open mandates: shape, matching, counters, the one-pending rule and the agent's view of
+//! conversation trust (PROTOCOL §4.4, §8.3, §9.1).
 //! Open mandates never leave the issuing gate.
 
 use std::collections::BTreeSet;
@@ -6,6 +7,7 @@ use std::collections::BTreeSet;
 use paseka_proto::draft::DraftKind;
 use paseka_proto::evidence::Channel;
 use paseka_proto::mandate::{AttachmentRule, OpenMandate, PrivateSources};
+use paseka_proto::tools::ThreadTrust;
 use paseka_proto::{
     Address, Level, MandateId, OpenTrust, ShelfId, TemplateId, TenantId, ThreadId, UnixSecs,
 };
@@ -15,7 +17,7 @@ use crate::tenant::TenantMap;
 const HOUR: u64 = 3600;
 const DAY: u64 = 24 * HOUR;
 
-/// Default duration of conversation trust, with no message limit (PROTOCOL §8.3, §14).
+/// Default duration of conversation trust, with no message limit (PROTOCOL §4.4, §14).
 pub const CONVERSATION_TTL_DEFAULT: u64 = 30 * 60;
 
 /// Maximum lifetime per trust (PROTOCOL §8.3); for conversation trust it bounds the owner's
@@ -271,6 +273,39 @@ pub fn open_shelves<'a>(
         .filter(|m| m.trust == OpenTrust::T2 && &m.to == to && book.is_active(m, now))
         .flat_map(|m| m.constraints.shelves.iter())
         .collect()
+}
+
+/// Conversation trust of `thread` with `peer` as the agent sees it (PROTOCOL §4.4). Active only
+/// for a conversation mandate of `tenant` in `ms` on that exact thread and peer that is active,
+/// outside tripwire mode and has a message left; `seconds_left` counts from `now` to its `exp`.
+pub fn thread_trust(
+    book: &OpenBook,
+    ms: &[OpenMandate],
+    tenant: &TenantId,
+    peer: &Address,
+    thread: &ThreadId,
+    tripwire: bool,
+    now: UnixSecs,
+) -> ThreadTrust {
+    let ends_at = ms
+        .iter()
+        .filter(|m| {
+            !tripwire
+                && &m.tenant == tenant
+                && m.trust == OpenTrust::Conversation
+                && &m.to == peer
+                && m.constraints.thread.as_ref() == Some(thread)
+                && book.is_active(m, now)
+                && book.counts_ok(m, now)
+        })
+        .map(|m| m.exp)
+        .max();
+    ThreadTrust {
+        active: ends_at.is_some(),
+        ends_at,
+        seconds_left: ends_at.map(|exp| exp - now),
+        new_thread_needs_owner: true,
+    }
 }
 
 #[cfg(test)]

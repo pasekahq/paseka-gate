@@ -1,0 +1,21 @@
+{
+  "items": [
+    {
+      "message_id": "m_01JD0000000000000000000002",
+      "origin": "peer",
+      "from": "bob",
+      "thread": "th_01JD0000000000000000000001",
+      "received_at": 1794268800,
+      "preview": "Monday works for me.",
+      "attachments_count": 0,
+      "read": false,
+      "sender_level": "A0",
+      "thread_trust": {
+        "active": true,
+        "ends_at": 1794270000,
+        "seconds_left": 1200
+      }
+    }
+  ],
+  "next": null
+}

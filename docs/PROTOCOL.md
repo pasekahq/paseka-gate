@@ -26,7 +26,7 @@ properties SP-n and conformance attacks CA-n are defined in `docs/THREAT-MODEL.m
 | request id | `r_` + ULID (one per approval request of a draft revision) | gate-local |
 | message id | `m_` + ULID (an inbox item) | gate-local |
 | event id | `e_` + ULID | global, chosen by the sending gate |
-| thread id | `th_` + ULID | global, chosen by the gate that opens the thread |
+| thread id | `th_` + ULID | global, chosen by the gate that opens the thread (§4.4) |
 | mandate id (`jti`) | `md_` + ULID | global, chosen by the issuing gate |
 | peer handle | `[a-z0-9][a-z0-9_-]{0,31}` | per tenant, set by the owner |
 | key id | `ed25519:` + b64u(32-byte public key) | global |
@@ -209,6 +209,28 @@ A refused decision leaves tripwire mode active and the request open. `telegram-b
 interface has no operation on it. A tenant without a PIN sets one by the local CLI (§7.5) and
 then clears.
 
+### 4.4 Threads and conversation trust
+
+A thread is a chain of messages linked by `in_reply_to`, as in e-mail. A draft with
+`in_reply_to` joins the thread of the message it answers; a draft without it opens a new thread,
+and the gate that opens it chooses the thread id (§2). The owner sees a thread named by its first
+message.
+
+Conversation trust is an open mandate on one thread with one peer (`trust: conversation`,
+constraint `thread`, §8.3). It covers free-text revisions in that thread to that peer and
+nothing else; free text that opens a new thread needs the owner. Its duration is the
+`conversation_trust` setting of §14, with no message limit by default; the draft limits of §5.3
+still bound it.
+
+Every `DraftView`, so every `propose` output, and every `inbox` item carries `thread_trust` for
+its thread and peer (`paseka_core::open::thread_trust`). `active` is true only for a
+conversation mandate on that exact thread and peer that is active as §9.1 defines it
+(`nbf <= now < exp`, not revoked, tenant not in tripwire mode) and whose counters allow one more
+message; then `ends_at` is its `exp` and `seconds_left` is `exp - now`. `new_thread_needs_owner`
+states the new-thread rule above for the agent. The canonical text that explains threads and
+conversation trust to agents is the `description` of
+`contracts/agent/propose.input.schema.json`.
+
 ## 5. Agent interface
 
 ### 5.1 Transport
@@ -246,9 +268,8 @@ absence is the contract (SP-1).
 
 Exact shapes: `contracts/agent/*.schema.json`. Rules:
 
-- `propose`: `to` is a peer handle of an active peer. With `in_reply_to` (a message id from the
-  inbox) the thread is that message's thread and `to` MUST be its sender. Without it the gate
-  opens a new thread. Exactly one of `body` and `template` is present. A template is
+- `propose`: `to` is a peer handle of an active peer. `in_reply_to` is a message id from the
+  inbox; it selects the thread as §4.4 states, and `to` MUST be that message's sender. Exactly one of `body` and `template` is present. A template is
   `{id, fields}`; the gate renders the owner-defined template and validates every field against
   its type. `sources` are agent-declared references (`{kind: "agent", ref}`); the gate records
   them as unverified.
@@ -260,6 +281,7 @@ Exact shapes: `contracts/agent/*.schema.json`. Rules:
   runs of 16 or more characters, or digit runs of 6 or more. A doc that does not exist or is not
   on a shelf open to `to` yields `not_found`. The gate reads the bytes itself (§9.3).
 - `DraftView.body` is the body of the current revision, so the agent learns an owner edit.
+- `DraftView.thread_trust` and `InboxItem.thread_trust` report conversation trust as §4.4 states.
 - `inbox`, `queue` and `journal` page by an opaque cursor `next`, passed back as `since`.
   `limit` is 1 to 100, default 20.
 
@@ -588,8 +610,7 @@ Rules:
   presented only after the previous one is refused, revoked or expired (AP2 rule, CA-28).
 - Maximum lifetimes: `conversation` the bound of the conversation trust setting of §14, T1 30
   days, T2 90 days, T3 7 days with renewal.
-- Conversation trust is an open mandate on one thread. Its duration is an owner setting, default
-  in §14, with no message limit by default; the draft limits of §5.3 still bound it.
+- Conversation trust is the open mandate of §4.4.
 - Revocation takes effect for every evaluation that starts after it commits (CA-27).
 - Counters are consumed in the release transaction.
 
@@ -952,7 +973,7 @@ table, with the same parameter names; the code constants equal it.
 | `draft_lifetime` (§4) | 43200 s (12 h) | 300 s to 604800 s (5 min to 7 days) | `draft::DRAFT_LIFETIME_DEFAULT`, `draft::DRAFT_LIFETIME_RANGE` |
 | `pending_drafts_per_tenant` (§5.3) | 50 drafts in `awaiting_consent` | fixed | `draft::PENDING_DRAFTS_PER_TENANT` |
 | `drafts_per_peer_per_hour` (§5.3) | 30 drafts | fixed | `draft::DRAFTS_PER_PEER_PER_HOUR` |
-| `conversation_trust` (§8.3) | 1800 s (30 min), no message limit | at most 86400 s (24 h) | `open::CONVERSATION_TTL_DEFAULT`, `open::max_lifetime(OpenTrust::Conversation)` |
+| `conversation_trust` (§4.4) | 1800 s (30 min), no message limit | at most 86400 s (24 h) | `open::CONVERSATION_TTL_DEFAULT`, `open::max_lifetime(OpenTrust::Conversation)` |
 | `prompt_ttl` (§7.1) | 3600 s (1 h) | 300 s to 86400 s | `draft::PROMPT_TTL_DEFAULT`, `draft::PROMPT_TTL_RANGE` |
 | `init_data_window` (§7.4) | 300 s | 60 s to 600 s | `initdata::INIT_DATA_WINDOW_DEFAULT`, `initdata::INIT_DATA_WINDOW_RANGE` |
 | `init_data_future_skew` (§7.4) | 30 s | fixed | `initdata::INIT_DATA_FUTURE_SECS` |

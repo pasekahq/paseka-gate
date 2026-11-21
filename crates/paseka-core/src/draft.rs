@@ -10,7 +10,7 @@ use std::ops::RangeInclusive;
 use paseka_proto::draft::{DraftKind, DraftState, Reason};
 use paseka_proto::evidence::{Channel, Decision};
 use paseka_proto::mandate::AttachmentMeta;
-use paseka_proto::tools::{Delivery, DraftView};
+use paseka_proto::tools::{Delivery, DraftView, ThreadTrust};
 use paseka_proto::{
     DraftId, Level, MessageId, Nonce, PeerHandle, RequestId, Sha256, TenantId, ThreadId, UnixSecs,
 };
@@ -422,9 +422,9 @@ impl Draft {
         }
     }
 
-    /// The agent's view: state, coarse reason and content only (SP-8). `delivery` is required
-    /// once released.
-    pub fn view(&self, delivery: Option<Delivery>) -> DraftView {
+    /// The agent's view: state, coarse reason, content and the thread's conversation trust from
+    /// [`crate::open::thread_trust`] (SP-8). `delivery` is required once released.
+    pub fn view(&self, delivery: Option<Delivery>, thread_trust: ThreadTrust) -> DraftView {
         DraftView {
             draft_id: self.id.clone(),
             revision: self.revision,
@@ -442,6 +442,7 @@ impl Draft {
             updated_at: self.updated_at,
             expires_at: self.request.as_ref().map(|r| r.expires_at),
             delivery,
+            thread_trust: Some(thread_trust),
         }
     }
 

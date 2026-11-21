@@ -17,6 +17,13 @@ is normative in `docs/PROTOCOL.md`; these files fix the shapes. Schema `$id`s li
 | `defaults.json` | the defaults table of PROTOCOL §14 as data (not a schema) |
 | `fixtures/` | examples and test vectors |
 
+## Tool descriptions
+
+The top-level `description` of `agent/<tool>.input.schema.json`, where present, is the canonical
+description of that tool: the MCP server advertises it as the tool's `description` in
+`tools/list`, unchanged. Paragraphs are separated by a blank line. In `propose` the paragraph
+that starts with `Sources.` holds every rule about the `sources` input and nothing else.
+
 ## Fixtures
 
 `fixtures/<schema path without .schema.json>/valid/*.json` MUST validate against that schema;
@@ -138,6 +145,15 @@ Made in place in v1 before any release or deployed peer (ADR 0017).
 - The fixture `mandate/open/invalid/empty-rate.json`, a conversation mandate, is now
   `mandate/open/valid/conversation-without-message-limit.json`; the new
   `mandate/open/invalid/t1-empty-rate.json` keeps the empty-rate case.
+
+### Version 1: thread trust in agent outputs
+
+Additive (ADR 0010).
+
+- `agent/views` gains `$defs/ThreadTrust` (`active`, `ends_at`, `seconds_left`,
+  `new_thread_needs_owner`) and the optional `thread_trust` in `DraftView` and `InboxItem`
+  (PROTOCOL §4.4).
+- `agent/propose.input` gains a top-level `description`, the tool description for agents.
 
 ## Tolerant readers
 
