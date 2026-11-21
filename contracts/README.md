@@ -32,8 +32,9 @@ and an address, the tenant id. Ed25519 signatures are deterministic, so implemen
 reproduce the compact strings exactly from the given claims serialization and seed.
 
 The file, the closed mandate inside the `wire/envelope` fixtures, the `mandate/closed`,
-`evidence/telegram-button` and `evidence/telegram-miniapp-pin` fixtures, the `key-rotate` and `key-revoke` fixtures of
-`wire/envelope`, the `wire/key-proof` and `wire/key-replacement` fixtures and
+`evidence/telegram-button` and `evidence/telegram-miniapp-pin` fixtures,
+`evidence/telegram-miniapp/valid/approve-above-available.json`, the `key-rotate` and
+`key-revoke` fixtures of `wire/envelope`, the `wire/key-proof` and `wire/key-replacement` fixtures and
 `pairing/accept/invalid/key-id-as-next-key.json` are generated, never edited by
 hand: `PASEKA_WRITE_VECTORS=1 cargo test -p paseka-core --lib vectors::` writes them from the
 seeds, and the same test without the variable fails when a file differs from what the generator
@@ -106,7 +107,7 @@ Made in place in v1 before any release or deployed peer (ADR 0014).
 
 ### Version 1: A2+ PIN channel
 
-Additive (ADR 0010, ADR 0015).
+Additive (ADR 0010, ADR 0015), except the last item, made in place before any release.
 
 - `common` `$defs/channel` gains `telegram-miniapp-pin` (A2+).
 - New schema `evidence/telegram-miniapp-pin`: the A2 fields plus `pin_verified_at`; never the
@@ -114,6 +115,8 @@ Additive (ADR 0010, ADR 0015).
 - `evidence/telegram-button`, `evidence/telegram-miniapp` and `evidence/telegram-miniapp-pin`
   gain the optional `required_level`, present when the request required a level above every
   configured channel (PROTOCOL §6.2).
+- `required_level` of `evidence/telegram-miniapp-pin` allows only `A3`: that channel attests
+  A2+, so only an A3 requirement is above it.
 
 ## Tolerant readers
 

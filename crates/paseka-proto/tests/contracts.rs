@@ -40,6 +40,10 @@ const WRITER_ONLY: &[(&str, &str)] = &[
         "gate never writes the PIN",
     ),
     (
+        "evidence/telegram-miniapp-pin/invalid/required-level-a2plus.json",
+        "gate marks only a level above the channel",
+    ),
+    (
         "evidence/telegram-button/invalid/level-a2.json",
         "core checks channel and level agree",
     ),

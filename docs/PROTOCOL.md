@@ -114,7 +114,9 @@ approval_challenge = SHA-256(
 `level` is the required level string (`A1`, `A2`, `A2+`, `A3`), also when it is above every
 configured channel (§6.2). Key-based channels (A3 passkey, later the biometric A2+ channel) sign
 these 32 bytes; A1, A2 and PIN evidence records them. Through `release_digest` the challenge also binds the
-draft `expires`, so the owner approves the draft's lifetime with its content.
+draft `expires`, so the owner approves the draft's lifetime with its content. Evidence `level` is
+the channel's level; the challenge `level` is the evidence `required_level` when present, and
+otherwise the closed mandate's `level` (§6.3).
 
 ## 4. Drafts
 
@@ -417,16 +419,41 @@ deny, the page asks for the PIN and sends it with the decision:
 `POST /app/v1/decision` with `{request_id, nonce, release_digest, decision, edited_body?, pin}`.
 The gate verifies initData by steps 1 to 7 of §7.4, checks the PIN against the tenant's stored
 verifier, and then checks §7.1 with channel `telegram-miniapp-pin`. A wrong PIN refuses the
-decision and leaves the request open. The gate never stores, logs or journals the PIN itself.
+decision, counts against the attempt limit below and leaves the request open. The gate never
+stores, logs or journals the PIN itself.
 
 Evidence (`contracts/evidence/telegram-miniapp-pin.schema.json`): the A2 fields of §7.4,
 `pin_verified_at` (when the gate accepted the PIN), and `required_level` in the marked case. It
 never contains the PIN, the password or any value derived from them.
 
+PIN lifecycle (constants and types in `paseka_core::pin`):
+
+- Kind: a security setting (§9.4) that holds no secret. Six ASCII digits (`PIN_DIGITS`), the
+  default, or a password of at least `PASSWORD_MIN_CHARS` (12) characters with no control
+  characters (`PinKind`). The gate checks every new PIN against the kind (`PinKind::check`).
+- Set: the owner sets the PIN in the Mini App during the first-run ceremony. A tenant without a
+  stored verifier has no `telegram-miniapp-pin` channel.
+- Storage: the gate stores only an Argon2id verifier (RFC 9106, version 0x13): memory 65536 KiB,
+  3 passes, parallelism 4, a fresh 16-byte salt from the OS CSPRNG, a 32-byte tag, in PHC string
+  format. The input is the UTF-8 bytes of the PIN as entered; tags are compared in constant time.
+  The Argon2 secret input is empty and reserved for a key kept outside the database.
+- Change: through consent in the Mini App, where the owner enters the old PIN, checked and
+  limited like a decision PIN, and then the new one; or by the local CLI on the gate host, run
+  as the gate's unix user (TB-5), which needs no old PIN. A change of kind is a PIN change. The
+  journal records each change without the PIN or the verifier.
+- Attempt limit: per tenant, `PIN_MAX_FAILURES` (5) wrong entries in a row freeze PIN entry for
+  `PIN_FREEZE_SECS` (900 s) from the fifth failure (`PinLimiter`). During the freeze every PIN
+  entry is refused unchecked and does not extend it. Entering the freeze sends the owner exactly
+  one notice in the consent chat, with the end of the freeze and never the entered value. A
+  right PIN resets the count; the freeze ends at its time with a fresh count. Decision PINs and
+  old PINs of a change share the count. The limit guards online entry only (THREAT-MODEL A-9).
+- Biometrics: when `telegram-miniapp-biometric` arrives, the PIN channel stays as the fallback
+  A2+ channel.
+
 Later, `telegram-miniapp-biometric` is a further A2+ channel: a non-extractable WebCrypto Ed25519
 or P-256 key, created in the Mini App, unlocked through Telegram `BiometricManager`, registered
 through an A2 consent. It signs the 32-byte approval challenge. Evidence: key id, algorithm,
-signature, and the A2 fields. No hardware attestation. The PIN stays as the fallback A2+ channel.
+signature, and the A2 fields. No hardware attestation.
 
 ### 7.6 A3: `passkey` (later)
 
@@ -571,7 +598,8 @@ Approvers, peers, trust levels, open mandates, shelves, templates, dictionary, c
 fingerprint sources, default floors and windows are security settings. After the first-run
 ceremony they change only through an owner decision in the Mini App at A2 or higher, journaled
 with evidence. The bootstrap config is read only before the ceremony; later differences are
-reported to the owner and ignored (CA-23).
+reported to the owner and ignored (CA-23). The PIN and its kind change only as §7.5 states:
+through consent with the old PIN, or by the local CLI on the gate host.
 
 ## 10. Gate-to-gate wire
 
