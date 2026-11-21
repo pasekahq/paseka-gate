@@ -17,10 +17,10 @@
       "$ref": "../common.schema.json#/$defs/v"
     },
     "iss": {
-      "$ref": "../common.schema.json#/$defs/key_id"
+      "$ref": "../common.schema.json#/$defs/address"
     },
     "aud": {
-      "$ref": "../common.schema.json#/$defs/key_id"
+      "$ref": "../common.schema.json#/$defs/address"
     },
     "id": {
       "$ref": "../common.schema.json#/$defs/event_id"

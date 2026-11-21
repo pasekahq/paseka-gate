@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use paseka_proto::envelope::{Envelope, Event, ReceiptStatus, WireErrorCode};
 use paseka_proto::jws::{Compact, JwsError, MAX_TOKEN_BYTES, Typ};
-use paseka_proto::{EventId, KeyId, Sha256, TenantId, UnixSecs};
+use paseka_proto::{Address, EventId, Sha256, TenantId, UnixSecs};
 use serde::Serialize;
 
 use crate::hash::sha256;
@@ -49,12 +49,13 @@ pub struct Accepted {
     pub envelope_sha256: Sha256,
 }
 
-/// Receiver state: tenants by key, paired peers, seen event ids and mandate ids.
+/// Receiver state: local tenants by address, paired peers with their recorded key, seen event
+/// ids and mandate ids.
 #[derive(Debug, Clone, Default)]
 pub struct Receiver {
-    tenants: BTreeMap<KeyId, TenantId>,
-    peers: TenantMap<KeyId, (VerifyingKey, PeerState)>,
-    seen: TenantMap<(KeyId, EventId), (Sha256, UnixSecs)>,
+    tenants: BTreeMap<Address, TenantId>,
+    peers: TenantMap<Address, (VerifyingKey, PeerState)>,
+    seen: TenantMap<(Address, EventId), (Sha256, UnixSecs)>,
     jtis: JtiBook,
 }
 
@@ -73,14 +74,20 @@ fn malformed(e: JwsError) -> WireErrorCode {
 }
 
 impl Receiver {
-    /// Registers a local tenant under its key id.
-    pub fn add_tenant(&mut self, key: KeyId, tenant: TenantId) {
-        self.tenants.insert(key, tenant);
+    /// Registers a local tenant under its address.
+    pub fn add_tenant(&mut self, tenant: TenantId) {
+        self.tenants.insert(tenant.address(), tenant);
     }
 
-    /// Records a peer of `tenant` in `state`.
-    pub fn set_peer(&mut self, tenant: &TenantId, key: VerifyingKey, state: PeerState) {
-        self.peers.insert(tenant, token::key_id(&key), (key, state));
+    /// Records the peer `address` of `tenant` with its current `key`, in `state`.
+    pub fn set_peer(
+        &mut self,
+        tenant: &TenantId,
+        address: Address,
+        key: VerifyingKey,
+        state: PeerState,
+    ) {
+        self.peers.insert(tenant, address, (key, state));
     }
 
     /// Verifies and accepts one envelope in the order of PROTOCOL §10.3; the first failure
@@ -112,11 +119,7 @@ impl Receiver {
             .peers
             .get(&tenant, &head.iss)
             .ok_or(WireErrorCode::NotPaired)?;
-        if c.header.kid != head.iss {
-            return Err(WireErrorCode::NotPaired);
-        }
-        token::verify(jws, Typ::Envelope, &head.iss, &key)
-            .map_err(|_| WireErrorCode::BadSignature)?;
+        token::verify(jws, Typ::Envelope, &key).map_err(|_| WireErrorCode::BadSignature)?;
         if head.iat > now.saturating_add(SKEW_SECS) {
             return Err(WireErrorCode::FromFuture);
         }
@@ -162,28 +165,15 @@ impl Receiver {
 #[cfg(test)]
 mod tests {
     use paseka_proto::envelope::MessageData;
-    use serde_json::Value;
 
     use super::*;
+    use crate::testkit::{seed_key, vectors};
 
-    fn vectors() -> Value {
-        let path = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../contracts/fixtures/vectors/digests.json"
-        );
-        serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
-    }
-
-    fn seed_key(v: &Value, name: &str) -> SigningKey {
-        let hex = v["signing_keys"][name]["seed_hex"].as_str().unwrap();
-        SigningKey::from_bytes(&Sha256::from_hex(hex).unwrap().0)
-    }
-
-    fn setup() -> (Receiver, String, UnixSecs) {
+    fn setup() -> (Receiver, String, Envelope<MessageData>, UnixSecs) {
         let v = vectors();
         let env: Envelope<MessageData> =
             serde_json::from_value(v["signed"]["envelope"]["payload"].clone()).unwrap();
-        let (alice, bob) = (seed_key(&v, "alice"), seed_key(&v, "bob"));
+        let (alice, carol) = (seed_key(&v, "alice"), seed_key(&v, "carol"));
         let jws = seal(&alice, &env);
         assert_eq!(jws, v["signed"]["envelope"]["compact"].as_str().unwrap());
         assert_eq!(
@@ -192,14 +182,26 @@ mod tests {
         );
         let bob_tenant = TenantId::new("t_01JD0000000000000000000002").unwrap();
         let mut r = Receiver::default();
-        r.add_tenant(token::key_id(&bob.verifying_key()), bob_tenant.clone());
-        r.set_peer(&bob_tenant, alice.verifying_key(), PeerState::Active);
-        (r, jws, env.iat + 1)
+        r.add_tenant(bob_tenant.clone());
+        r.set_peer(
+            &bob_tenant,
+            env.iss.clone(),
+            alice.verifying_key(),
+            PeerState::Active,
+        );
+        r.set_peer(
+            &bob_tenant,
+            Address::new("t_01JD0000000000000000000003").unwrap(),
+            carol.verifying_key(),
+            PeerState::Active,
+        );
+        let now = env.iat + 1;
+        (r, jws, env, now)
     }
 
     #[test]
     fn the_vector_envelope_is_accepted_once_then_duplicate() {
-        let (mut r, jws, now) = setup();
+        let (mut r, jws, _, now) = setup();
         assert_eq!(r.accept(&jws, now).unwrap().status, ReceiptStatus::Accepted);
         let again = r.accept(&jws, now).unwrap();
         assert_eq!(
@@ -210,7 +212,7 @@ mod tests {
 
     #[test]
     fn stale_future_and_tampered_envelopes_are_refused() {
-        let (mut r, jws, now) = setup();
+        let (mut r, jws, _, now) = setup();
         assert_eq!(
             r.accept(&jws, now + MAX_AGE_SECS + 10),
             Err(WireErrorCode::Stale)
@@ -226,6 +228,29 @@ mod tests {
         assert_eq!(
             r.accept(&parts.join("."), now),
             Err(WireErrorCode::BadSignature)
+        );
+    }
+
+    #[test]
+    fn the_recipient_resolves_by_aud_and_the_kid_must_name_the_key_recorded_for_iss() {
+        let v = vectors();
+        let (mut r, _, env, now) = setup();
+        let carol = seed_key(&v, "carol");
+        assert_eq!(
+            r.accept(&seal(&carol, &env), now),
+            Err(WireErrorCode::BadSignature)
+        );
+        let mut unknown_sender = env.clone();
+        unknown_sender.iss = Address::new("t_01JD0000000000000000000009").unwrap();
+        assert_eq!(
+            r.accept(&seal(&carol, &unknown_sender), now),
+            Err(WireErrorCode::NotPaired)
+        );
+        let mut other_tenant = env;
+        other_tenant.aud = Address::new("t_01JD0000000000000000000001").unwrap();
+        assert_eq!(
+            r.accept(&seal(&seed_key(&v, "alice"), &other_tenant), now),
+            Err(WireErrorCode::NotPaired)
         );
     }
 }

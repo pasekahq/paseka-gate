@@ -7,7 +7,7 @@ use paseka_proto::draft::DraftKind;
 use paseka_proto::evidence::Channel;
 use paseka_proto::mandate::{AttachmentRule, OpenMandate, PrivateSources};
 use paseka_proto::{
-    KeyId, Level, MandateId, OpenTrust, ShelfId, TemplateId, TenantId, ThreadId, UnixSecs,
+    Address, Level, MandateId, OpenTrust, ShelfId, TemplateId, TenantId, ThreadId, UnixSecs,
 };
 
 use crate::tenant::TenantMap;
@@ -64,8 +64,8 @@ pub fn check_shape(m: &OpenMandate) -> Result<(), BadShape> {
 /// The facts about a revision that open-mandate matching looks at.
 #[derive(Debug, Clone, Copy)]
 pub struct Candidate<'a> {
-    /// Recipient key id.
-    pub to: &'a KeyId,
+    /// Recipient address.
+    pub to: &'a Address,
     /// What was proposed.
     pub kind: DraftKind,
     /// Template used, for [`DraftKind::Template`].
@@ -101,7 +101,7 @@ pub enum OpenDenied {
 #[derive(Debug, Clone, Default)]
 pub struct OpenBook {
     revoked: TenantMap<MandateId, ()>,
-    slots: TenantMap<(KeyId, &'static str), Slot>,
+    slots: TenantMap<(Address, &'static str), Slot>,
     sent: TenantMap<MandateId, Vec<UnixSecs>>,
 }
 
@@ -259,7 +259,7 @@ impl OpenBook {
 pub fn open_shelves<'a>(
     book: &OpenBook,
     ms: &'a [OpenMandate],
-    to: &KeyId,
+    to: &Address,
     now: UnixSecs,
 ) -> BTreeSet<&'a ShelfId> {
     ms.iter()

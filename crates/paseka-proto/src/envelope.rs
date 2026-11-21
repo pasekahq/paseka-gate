@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::mandate::AttachmentMeta;
-use crate::{EventId, KeyId, PairingId, Sha256, ThreadId, UnixSecs, V1};
+use crate::{Address, EventId, PairingId, Sha256, ThreadId, UnixSecs, V1};
 
 /// Envelope `type`. Authority-bearing: an unknown type is a parse error (`unsupported`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -25,10 +25,10 @@ pub enum EventType {
 pub struct Envelope<D> {
     /// Contract version.
     pub v: V1,
-    /// Sender tenant key id.
-    pub iss: KeyId,
-    /// Recipient tenant key id.
-    pub aud: KeyId,
+    /// Sender address.
+    pub iss: Address,
+    /// Recipient address.
+    pub aud: Address,
     /// Event id, unique per sender.
     pub id: EventId,
     /// Event type; MUST match `D`.
@@ -45,10 +45,10 @@ pub struct Envelope<D> {
 pub struct EnvelopeHead {
     /// Contract version.
     pub v: V1,
-    /// Sender tenant key id.
-    pub iss: KeyId,
-    /// Recipient tenant key id.
-    pub aud: KeyId,
+    /// Sender address.
+    pub iss: Address,
+    /// Recipient address.
+    pub aud: Address,
     /// Event id.
     pub id: EventId,
     /// Event type.
@@ -160,10 +160,10 @@ pub enum ReceiptStatus {
 pub struct Receipt {
     /// Contract version.
     pub v: V1,
-    /// Receiver key id.
-    pub iss: KeyId,
-    /// Sender key id.
-    pub aud: KeyId,
+    /// Receiver address.
+    pub iss: Address,
+    /// Sender address.
+    pub aud: Address,
     /// Event id.
     pub id: EventId,
     /// SHA-256 of the envelope's compact JWS bytes.
@@ -257,8 +257,8 @@ pub struct WireError {
 mod tests {
     use super::*;
 
-    const MSG: &str = r#"{"v":1,"iss":"ed25519:YM6rJ7zZ2l98CigfxePpz270jIk0mSfrMRnjzMm2TXc",
-        "aud":"ed25519:ZT6_6_EUEkd5szcRy6DJ6HLUSUhLFZsKp3xfSslZCd0",
+    const MSG: &str = r#"{"v":1,"iss":"t_01JD0000000000000000000001",
+        "aud":"t_01JD0000000000000000000002",
         "id":"e_01JD0000000000000000000002","type":"TYPE","iat":1,"data":{"reason":"bye"}}"#;
 
     #[test]

@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::evidence::Channel;
 use crate::level::OpenTrust;
 use crate::{
-    EventId, KeyId, Level, MandateId, Nonce, Sha256, ShelfId, TemplateId, TenantId, ThreadId,
+    Address, EventId, Level, MandateId, Nonce, Sha256, ShelfId, TemplateId, TenantId, ThreadId,
     UnixSecs, V1,
 };
 
@@ -66,12 +66,12 @@ pub struct ClosedMandate {
     pub v: V1,
     /// Always `closed`.
     pub kind: ClosedKind,
-    /// Sender tenant key id.
-    pub iss: KeyId,
-    /// Sender tenant (opaque to the receiver; bound into the release digest).
+    /// Sender address; the same id as `tenant`.
+    pub iss: Address,
+    /// Sender tenant, bound into the release digest.
     pub tenant: TenantId,
-    /// Recipient tenant key id.
-    pub to: KeyId,
+    /// Recipient address.
+    pub to: Address,
     /// Unique mandate id.
     pub jti: MandateId,
     /// Issue time.
@@ -176,12 +176,12 @@ pub struct OpenMandate {
     pub v: V1,
     /// Always `open`.
     pub kind: OpenKind,
-    /// Issuing tenant key id.
-    pub iss: KeyId,
+    /// Issuing tenant address; the same id as `tenant`.
+    pub iss: Address,
     /// Issuing tenant.
     pub tenant: TenantId,
-    /// The only recipient's key id.
-    pub to: KeyId,
+    /// The only recipient's address.
+    pub to: Address,
     /// Unique mandate id.
     pub jti: MandateId,
     /// Issue time.

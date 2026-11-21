@@ -10,7 +10,12 @@
     "tenant_id": {
       "type": "string",
       "pattern": "^t_[0-9A-HJKMNP-TV-Z]{26}$",
-      "description": "Gate-local opaque tenant id."
+      "description": "Global permanent tenant id; also the tenant's address."
+    },
+    "address": {
+      "type": "string",
+      "pattern": "^t_[0-9A-HJKMNP-TV-Z]{26}$",
+      "description": "A tenant's address towards peers: its permanent tenant id. Never a key id."
     },
     "draft_id": {
       "type": "string",
@@ -68,7 +73,7 @@
     "key_id": {
       "type": "string",
       "pattern": "^ed25519:[A-Za-z0-9_-]{43}$",
-      "description": "ed25519: + b64u of the 32-byte public key."
+      "description": "ed25519: + b64u of the 32-byte public key. Names a key, never a tenant."
     },
     "nonce": {
       "type": "string",

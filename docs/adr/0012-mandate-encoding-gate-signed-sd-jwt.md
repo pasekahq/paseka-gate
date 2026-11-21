@@ -11,8 +11,8 @@ channel evidence (raw `initData`, chat and message ids) is private to the owner 
 the receiving gate, which cannot verify Telegram's attestation of another tenant's bot.
 
 ## Decision
-- A mandate is an SD-JWT with zero disclosures: a compact JWS (`alg` `EdDSA`, `kid` the tenant
-  key id, `typ` `paseka-mandate+sd-jwt`) followed by `~`. No `_sd` claims and no key-binding JWT
+- A mandate is an SD-JWT with zero disclosures: a compact JWS (`alg` `EdDSA`, `kid` the id of the
+  tenant's current key, `typ` `paseka-mandate+sd-jwt`) followed by `~`. No `_sd` claims and no key-binding JWT
   in version 1.
 - The issuing gate signs every closed mandate with the tenant key on the owner's behalf, after
   the decision passed the approval-request checks (PROTOCOL §7.1), and for A0 releases under an
@@ -20,8 +20,9 @@ the receiving gate, which cannot verify Telegram's attestation of another tenant
 - `proof` carries `channel`, `approved_at` and `evidence_sha256`; the evidence object itself
   stays in the issuing gate's journal. Publicly verifiable evidence (A3 passkey assertions) MAY
   be carried inline in `proof.evidence`.
-- The closed mandate binds a release digest over tenant, both key ids, thread, reply target,
-  content hash and attachment metadata (PROTOCOL §3.2), not only the content hash.
+- The closed mandate binds a release digest over tenant, the addresses of both tenants (ADR
+  0013), thread, reply target, content hash and attachment metadata (PROTOCOL §3.2), not only the
+  content hash.
 - Open mandates never leave the issuing gate.
 
 ## Consequences

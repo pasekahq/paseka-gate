@@ -3,7 +3,7 @@
 //! with `sha256sum` from what the approval screen showed.
 
 use paseka_proto::mandate::AttachmentMeta;
-use paseka_proto::{EventId, KeyId, Level, Nonce, RequestId, Sha256, TenantId, ThreadId};
+use paseka_proto::{Address, EventId, KeyId, Level, Nonce, RequestId, Sha256, TenantId, ThreadId};
 use sha2::Digest as _;
 
 /// SHA-256 of `bytes`.
@@ -27,10 +27,10 @@ fn frame(h: &mut sha2::Sha256, x: &[u8]) {
 pub struct Release<'a> {
     /// Sending tenant.
     pub tenant: &'a TenantId,
-    /// Sending tenant key id.
-    pub iss: &'a KeyId,
-    /// Receiving tenant key id.
-    pub to: &'a KeyId,
+    /// Sending tenant address.
+    pub iss: &'a Address,
+    /// Receiving tenant address.
+    pub to: &'a Address,
     /// Thread.
     pub thread: &'a ThreadId,
     /// Event answered, if any.
@@ -109,14 +109,7 @@ mod tests {
     use serde_json::Value;
 
     use super::*;
-
-    fn vectors() -> Value {
-        let path = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../contracts/fixtures/vectors/digests.json"
-        );
-        serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
-    }
+    use crate::testkit::vectors;
 
     fn s<T: serde::de::DeserializeOwned>(v: &Value) -> T {
         serde_json::from_value(v.clone()).unwrap()

@@ -12,6 +12,7 @@ pub mod envelope;
 pub mod hash;
 pub mod mandate;
 pub mod open;
+pub mod pairing;
 pub mod risk;
 pub mod shelf;
 pub mod template;
@@ -20,3 +21,5 @@ pub mod token;
 
 #[cfg(test)]
 pub(crate) mod testkit;
+#[cfg(test)]
+mod vectors;
