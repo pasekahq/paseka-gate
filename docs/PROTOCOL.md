@@ -428,15 +428,36 @@ never contains the PIN, the password or any value derived from them.
 
 PIN lifecycle (constants and types in `paseka_core::pin`):
 
-- Kind: a security setting (§9.4) that holds no secret. Six ASCII digits (`PIN_DIGITS`), the
-  default, or a password of at least `PASSWORD_MIN_CHARS` (12) characters with no control
-  characters (`PinKind`). The gate checks every new PIN against the kind (`PinKind::check`).
+- Kind: a security setting (§9.4) that holds no secret. Six ASCII digits (`PIN_DIGITS`) or a
+  password of at least `PASSWORD_MIN_CHARS` (12) characters with no control characters
+  (`PinKind`). The gate checks every new PIN against the kind (`PinKind::check`).
+- Default kind: it depends on the tenant's deployment (`Deployment`), and `PinKind` has no
+  default without one. A hosted tenant, whose gate a hosting operator runs, starts with a
+  password; a self-host tenant, whose owner runs the gate, starts with six digits
+  (`PinKind::default_for`). The first-run ceremony offers the default and the owner may choose
+  the other kind there or later through a change below.
 - Set: the owner sets the PIN in the Mini App during the first-run ceremony. A tenant without a
   stored verifier has no `telegram-miniapp-pin` channel.
 - Storage: the gate stores only an Argon2id verifier (RFC 9106, version 0x13): memory 65536 KiB,
   3 passes, parallelism 4, a fresh 16-byte salt from the OS CSPRNG, a 32-byte tag, in PHC string
   format. The input is the UTF-8 bytes of the PIN as entered; tags are compared in constant time.
-  The Argon2 secret input is empty and reserved for a key kept outside the database.
+  The Argon2 secret input is the tenant's pepper.
+- Pepper: 32 bytes from the OS CSPRNG, one per tenant, a key of that tenant (TI-4). The gate
+  generates it before it stores the tenant's first verifier and keeps it outside the database:
+  in a file of its own, outside the database file and every path the gate backs up or exports,
+  owned by the gate's unix user and readable by no other (TB-5); or in a KMS, a later form with
+  the same properties. It is never written to the database, a database backup, the journal, a
+  journal export, a log line or evidence. A PIN change keeps a readable pepper.
+- Pepper loss: without the pepper no stored verifier can match, so every PIN entry of the tenant
+  fails. A missing or unreadable pepper is an error: the gate tells the owner once in the consent
+  chat, refuses each PIN entry without checking it and without counting it against the attempt
+  limit, and never generates a new pepper for a tenant with a stored verifier. The tenant keeps
+  its `telegram-miniapp-pin` channel, so requests that need it stay open. The owner recovers by
+  setting a new PIN through the local CLI (Change below), which generates a fresh pepper, writes
+  it and only then stores the new verifier.
+- Export and migration (TI-7): the pepper does not travel, and the export carries no PIN
+  verifier; the kind travels as a setting. The import sets a new PIN through the local CLI on
+  the new gate, which generates a fresh pepper there, before that gate serves the tenant.
 - Change: through consent in the Mini App, where the owner enters the old PIN, checked and
   limited like a decision PIN, and then the new one; or by the local CLI on the gate host, run
   as the gate's unix user (TB-5), which needs no old PIN. A change of kind is a PIN change. The
@@ -865,8 +886,8 @@ Invariants:
   then requires the Telegram user to be an approver of that tenant (CA-39).
 - TI-6 Rate limits, storage quotas and queue sizes are per tenant.
 - TI-7 Journal export and migration to self-host export one tenant: its key, settings, peers,
-  journal. Peers keep working because the address stays the same; only the endpoint changes,
-  which the gate announces through a later event type.
+  journal; never its PIN pepper or verifier (§7.5). Peers keep working because the address stays
+  the same; only the endpoint changes, which the gate announces through a later event type.
 
 ## 13. Versioning
 

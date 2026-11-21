@@ -67,16 +67,19 @@ Each item is done when the stated check passes. "CA" means a named conformance a
 ## Milestones (dependency order)
 
 1. M1 Core: `paseka-proto` types matching `contracts/`; `paseka-core` canonical hash, mandate
-   verification, risk levels, trust and shelf checks, tenant types, the PIN kind and the PIN
-   attempt limit; conformance harness with the core attacks. M1 stores no PIN. Covers d1, d3,
-   d5, d6, d9, d10, d12, d13, d15.
+   verification, risk levels, trust and shelf checks, tenant types, the PIN kind with its
+   default by deployment and the PIN attempt limit; conformance harness with the core attacks.
+   M1 stores no PIN. Covers d1, d3, d5, d6, d9, d10, d12, d13, d15.
 2. M2 Local gate: storage (rusqlite), MCP server and HTTP API for the agent, journal, policy
    engine. Covers d4, d11.
 3. M3 Consent: consent bot (A1), Mini App (A2) with Ed25519 `initData` verification, first-run
    ceremony. The A2+ PIN channel (PROTOCOL §7.5): the owner sets the PIN at the first-run
    ceremony; the Argon2id verifier lands here, with the ADR for its dependency (size, tree cost,
-   budget measurement); PIN change through consent with the old PIN and through the local CLI;
-   the attempt limit wired to the owner notice. Covers d7, d8, d16.
+   budget measurement); the per-tenant PIN pepper (generation from the OS CSPRNG, its file
+   outside the database, the missing-pepper error and recovery through the local CLI) and the
+   ceremony offering the PIN kind default for the tenant's deployment; PIN change through
+   consent with the old PIN and through the local CLI; the attempt limit wired to the owner
+   notice. Covers d7, d8, d16.
 4. M4 Peers: identity keys, pairing by deep link, signed envelopes, retry, behind Caddy; key
    change and revocation in the gate and Mini App (PROTOCOL §10.6 to §10.8): the owner starts
    them through consent with PIN or password, the gate sends `key.rotate` or `key.revoke` to
@@ -84,5 +87,5 @@ Each item is done when the stated check passes. "CA" means a named conformance a
    each peer's owner, and the receiving owner confirms a pending key change at A2. Covers d14,
    d21.
 5. M5 Release and install: reproducible build, provenance, audit checklist, `paseka conformance`
-   on installs, install and connect skills, hosted-tenant export and migration. Covers d2, d17,
-   d18, d19, d20, d22.
+   on installs, install and connect skills, hosted-tenant export and migration, with the PIN set
+   again on import (PROTOCOL §7.5). Covers d2, d17, d18, d19, d20, d22.
