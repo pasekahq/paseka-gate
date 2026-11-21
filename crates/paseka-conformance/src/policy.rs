@@ -15,7 +15,9 @@ use paseka_core::tripwire::{
 };
 use paseka_proto::draft::{DraftKind, DraftState};
 use paseka_proto::evidence::Channel;
-use paseka_proto::mandate::{AttachmentRule, Constraints, OpenKind, OpenMandate, OpenProof, Rate};
+use paseka_proto::mandate::{
+    AttachmentRule, Constraints, OpenKind, OpenMandate, OpenProof, PrivateSources, Rate,
+};
 use paseka_proto::tools::{FieldSpec, FieldType, FieldValue, ShareInput, TOOL_NAMES, ToolCall};
 use paseka_proto::{Address, DocId, Level, OpenTrust, Sha256, ShelfId, TemplateId, TenantId, V1};
 
@@ -515,13 +517,13 @@ impl NeverSource {
         })
     }
 
-    /// The required level of the leaking text to bob.
-    fn required(&self, open_mandate: bool) -> Required {
+    /// The required level of `text` to bob.
+    fn required(&self, text: &str, open_mandate: bool) -> Required {
         let decisions = self.registry.towards(&self.tenant, &self.bob);
         let d = risk::Draft {
             decisions: &decisions,
             open_mandate,
-            ..free(LEAK)
+            ..free(text)
         };
         risk::assess(&self.rules, &d).required
     }
@@ -533,7 +535,13 @@ fn ca54_owner_approval(w: &NeverSource) -> Outcome {
     if d.revise(1, revision(LEAK, vec![]), NOW + 1).is_err() {
         return Outcome::Fail("setup: revise refused".into());
     }
-    d.evaluated(w.required(false), &mvp_channels(), seed(2), NOW + 1, TTL);
+    d.evaluated(
+        w.required(LEAK, false),
+        &mvp_channels(),
+        seed(2),
+        NOW + 1,
+        TTL,
+    );
     let mut by_pin = approve(&prompt, Channel::TelegramMiniAppPin);
     by_pin.release_digest = d.current.release_digest;
     if d.decide(&by_pin, NOW + 2).is_ok() || d.release(NOW + 2).is_ok() {
@@ -561,7 +569,7 @@ fn ca54_open_mandate(w: &NeverSource) -> Outcome {
     if let Err(e) = active(&m).matches(&m, &c, false, NOW + 1) {
         return Outcome::Fail(format!("setup: open mandate does not match: {e:?}"));
     }
-    match w.required(true) {
+    match w.required(LEAK, true) {
         Required::Block => Outcome::Pass,
         Required::Level(l) => Outcome::Fail(format!("under an open mandate at {l}")),
     }
@@ -595,7 +603,7 @@ fn ca54_lift_outside_settings(w: &mut NeverSource) -> Outcome {
             .filter(|n| n.contains("source") || n.contains("allow"))
             .map(|n| Outcome::Fail(format!("agent tool {n} reaches the source registry"))),
     );
-    if w.required(true) != Required::Block {
+    if w.required(LEAK, true) != Required::Block {
         out.push(Outcome::Fail("a refused change lifted Never".into()));
     }
     all(out)
@@ -611,4 +619,77 @@ pub(crate) fn ca54_never_source_leaves() -> Outcome {
         ca54_open_mandate(&w),
         ca54_lift_outside_settings(&mut w),
     ])
+}
+
+const ASK_DOC: SourceId = SourceId(2);
+const ASK_TEXT: &str = "The spring offsite moves to the lake house because the city venue doubled \
+    its price for the second week of May.";
+const ASK_LEAK: &str = "Heads up: the spring offsite moves to the lake house because the city venue doubled its price.";
+const API_KEY: &str = "use key sk-abcdefghijklmnopqrstuvwxyz";
+
+/// Pass when `text`, proposed in bob's thread 1 under `m`, is not released and ends in `want`.
+fn ca55_leaves(w: &NeverSource, m: &OpenMandate, text: &str, want: DraftState) -> Outcome {
+    let book = active(m);
+    let (bob, th) = (w.bob.clone(), thread(1));
+    if !thread_trust(
+        &book,
+        std::slice::from_ref(m),
+        &w.tenant,
+        &bob,
+        &th,
+        false,
+        NOW + 1,
+    )
+    .active
+    {
+        return Outcome::Fail("setup: thread 1 is not under conversation trust".into());
+    }
+    let c = Candidate {
+        to: &bob,
+        kind: DraftKind::FreeText,
+        template: None,
+        shelf: None,
+        thread: &th,
+        body_len: text.len(),
+        foreign_attachments: false,
+        private_sources: true,
+    };
+    let open = book.matches(m, &c, false, NOW + 1).is_ok();
+    let mut d = draft(text, w.required(text, open));
+    let label = format!(
+        "{text:?} under private_sources {:?}",
+        m.constraints.private_sources
+    );
+    if d.release(NOW + 1).is_ok() {
+        return Outcome::Fail(format!("{label} left without the owner"));
+    }
+    if d.state == want {
+        Outcome::Pass
+    } else {
+        Outcome::Fail(format!("{label} is {:?}, not {want:?}", d.state))
+    }
+}
+
+pub(crate) fn ca55_conversation_mandate_beyond_allow() -> Outcome {
+    let mut w = match NeverSource::new() {
+        Ok(w) => w,
+        Err(o) => return o,
+    };
+    if let Err(e) = w.registry.register(&w.tenant, ASK_DOC, SourceKind::Files) {
+        return Outcome::Fail(format!("setup: register refused: {e:?}"));
+    }
+    w.rules.add_fingerprint(ASK_DOC, ASK_TEXT);
+    let mut out = Vec::new();
+    for private in [
+        Some(PrivateSources::Allow),
+        Some(PrivateSources::Deny),
+        None,
+    ] {
+        let mut m = conversation(1);
+        m.constraints.private_sources = private;
+        out.push(ca55_leaves(&w, &m, ASK_LEAK, DraftState::AwaitingConsent));
+        out.push(ca55_leaves(&w, &m, API_KEY, DraftState::AwaitingConsent));
+        out.push(ca55_leaves(&w, &m, LEAK, DraftState::Blocked));
+    }
+    all(out)
 }

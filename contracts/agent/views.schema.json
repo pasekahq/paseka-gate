@@ -345,7 +345,8 @@
           "$ref": "../common.schema.json#/$defs/trust"
         },
         "conversation_until": {
-          "$ref": "../common.schema.json#/$defs/unix_time"
+          "$ref": "../common.schema.json#/$defs/unix_time",
+          "description": "`exp` of the one active conversation mandate with this peer, present exactly when it is active as PROTOCOL §4.4 defines for `thread_trust`. It does not name the thread; `thread_trust` of a draft or inbox item does."
         },
         "shelves": {
           "type": "array",

@@ -85,7 +85,8 @@ pub struct Candidate<'a> {
     pub body_len: usize,
     /// Whether the revision has attachments not read by the gate from a shelf.
     pub foreign_attachments: bool,
-    /// Whether the turn read private sources.
+    /// Whether the revision hit a source of the registry (stages S4, S5, S8, S9), whatever the
+    /// registry decides for it. Such a revision matches only under `private_sources: allow`.
     pub private_sources: bool,
 }
 

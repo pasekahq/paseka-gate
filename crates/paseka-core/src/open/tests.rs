@@ -3,7 +3,12 @@ use paseka_proto::mandate::Rate;
 
 use super::*;
 use crate::draft::{DraftError, DraftLimit, admit};
-use crate::testkit::{address, cand, conversation, drafts, peer, t1, tenant, thread, tpl};
+use crate::risk::{self, OwnerRules, Required, SourceRead};
+use crate::source::{Access, BuiltIn, Source, SourceKind, SourceRegistry};
+use crate::testkit::{
+    CARD, DOCUMENT, FILES, MAIL, QUOTE, SECRET, address, cand, conversation, drafts, free, peer,
+    settle, t1, tenant, thread, tpl,
+};
 
 #[test]
 fn shape_rules_reject_weak_signers_and_missing_constraints() {
@@ -206,5 +211,77 @@ fn thread_trust_is_active_only_for_a_live_conversation_mandate_on_that_thread_an
             new_thread_needs_owner: true,
         };
         assert_eq!(ask.answer(), want, "{name}");
+    }
+}
+
+/// Each case reads or quotes one registry source in the thread of an active conversation
+/// mandate: Allow releases only under `private_sources: allow`, Ask goes to the owner at the
+/// stage floor and Never blocks, whatever the mandate says.
+#[test]
+fn a_conversation_mandate_releases_only_what_the_registry_allows_towards_the_peer() {
+    let (to, th) = (address(2), thread(1));
+    let mut rules = OwnerRules::default();
+    rules.add_fingerprint(FILES, DOCUMENT);
+    let mail = [SourceRead {
+        source: MAIL,
+        verified: true,
+    }];
+    let none: [SourceRead; 0] = [];
+    let a2 = Required::Level(Level::A2);
+    let a2p = Required::Level(Level::A2Plus);
+    let hits: [(Source, &str, &[SourceRead], Required); 4] = [
+        (Source::BuiltIn(BuiltIn::Secrets), SECRET, &none, a2),
+        (Source::BuiltIn(BuiltIn::PersonalIds), CARD, &none, a2),
+        (Source::Registered(FILES), QUOTE, &none, a2p),
+        (Source::Registered(MAIL), "ok", &mail, a2p),
+    ];
+    let mandates = [
+        (Some(PrivateSources::Allow), Required::Level(Level::A0)),
+        (Some(PrivateSources::Deny), Required::Level(Level::A1)),
+        (None, Required::Level(Level::A1)),
+    ];
+    for (private, allow_result) in mandates {
+        let mut m = conversation(1);
+        m.constraints.private_sources = private;
+        let mut book = OpenBook::default();
+        book.present(&m, 0).unwrap();
+        book.activate(&m).unwrap();
+        let ms = std::slice::from_ref(&m);
+        assert!(thread_trust(&book, ms, &tenant(1), &to, &th, false, 10).active);
+        for (source, text, sources, ask_floor) in hits {
+            let accesses = [
+                (Access::Allow, allow_result),
+                (Access::Ask, ask_floor),
+                (Access::Never, Required::Block),
+            ];
+            for (access, want) in accesses {
+                let mut reg = SourceRegistry::default();
+                reg.register(&tenant(1), FILES, SourceKind::Files).unwrap();
+                reg.register(&tenant(1), MAIL, SourceKind::Mcp).unwrap();
+                settle(&mut reg, source, &to, access);
+                let decisions = reg.towards(&tenant(1), &to);
+                let c = Candidate {
+                    to: &to,
+                    kind: DraftKind::FreeText,
+                    template: None,
+                    shelf: None,
+                    thread: &th,
+                    body_len: text.len(),
+                    foreign_attachments: false,
+                    private_sources: true,
+                };
+                let d = risk::Draft {
+                    sources,
+                    decisions: &decisions,
+                    open_mandate: book.matches(&m, &c, false, 10).is_ok(),
+                    ..free(text)
+                };
+                assert_eq!(
+                    risk::assess(&rules, &d).required,
+                    want,
+                    "{source:?} at {access:?} under private_sources {private:?}"
+                );
+            }
+        }
     }
 }

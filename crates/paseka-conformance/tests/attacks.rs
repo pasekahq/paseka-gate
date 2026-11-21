@@ -10,8 +10,8 @@ fn check(id: &str) {
 }
 
 #[test]
-fn attacks_are_numbered_ca_1_to_54_in_order() {
-    assert_eq!(ATTACKS.len(), 54);
+fn attacks_are_numbered_ca_1_to_55_in_order() {
+    assert_eq!(ATTACKS.len(), 55);
     for (i, a) in ATTACKS.iter().enumerate() {
         assert_eq!(a.id, format!("CA-{}", i + 1));
     }
@@ -299,4 +299,9 @@ fn ca53_clear_tripwire_without_pin() {
 #[test]
 fn ca54_never_source_leaves() {
     check("CA-54");
+}
+
+#[test]
+fn ca55_conversation_mandate_beyond_allow() {
+    check("CA-55");
 }

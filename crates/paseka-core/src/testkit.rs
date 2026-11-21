@@ -14,10 +14,24 @@ use crate::channel::Channels;
 use crate::draft::{Draft, RequestSeed, Revision};
 use crate::open::{CONVERSATION_TTL_DEFAULT, Candidate};
 use crate::risk::{self, OutputKind, Required};
-use crate::source::{Access, Change, Decisions, Source, SourceRegistry, Surface};
+use crate::source::{Access, Change, Decisions, Source, SourceId, SourceRegistry, Surface};
 
 /// No registry decisions: every source Ask.
 pub(crate) static ASK_ALL: Decisions = Decisions::new();
+
+/// A registered files source.
+pub(crate) const FILES: SourceId = SourceId(1);
+/// A registered MCP mail source.
+pub(crate) const MAIL: SourceId = SourceId(2);
+/// A document of [`FILES`].
+pub(crate) const DOCUMENT: &str = "The quarterly review found that the merger talks with the northern partner \
+    stalled because the valuation gap stayed too wide for both boards to accept.";
+/// A near-verbatim quote of [`DOCUMENT`].
+pub(crate) const QUOTE: &str = "Between us: the merger talks with the Northern partner stalled, because the valuation gap stayed too wide.";
+/// Text with an API key, a hit of the built-in secrets source.
+pub(crate) const SECRET: &str = "key sk-abcdefghijklmnopqrstuvwxyz";
+/// Text with a Luhn-valid card number, a hit of the built-in personal identifiers source.
+pub(crate) const CARD: &str = "card 4111 1111 1111 1111";
 
 /// The protocol test vectors, written by the generator in `vectors.rs`.
 pub(crate) const VECTORS_PATH: &str = concat!(

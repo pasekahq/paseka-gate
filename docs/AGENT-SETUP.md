@@ -42,10 +42,12 @@ named by its first message.
 
 The owner can trust one conversation in the Mini App: the agent's free-text replies in that one
 thread with that one peer then leave without asking the owner, unless the gate's checks hold one
-for the owner, for 30 minutes unless the owner sets another duration (at most 24 hours). This is
-an open mandate on one thread (`docs/PROTOCOL.md` §4.4). It never covers another thread or
-another peer, so free text that opens a new thread goes to the owner even while a conversation is
-trusted. The agent cannot ask for, extend or end conversation trust.
+for the owner, for 30 minutes unless the owner sets another duration (at most 24 hours). This is an
+open mandate on one thread (`docs/PROTOCOL.md` §4.4). It never widens the source registry: a reply
+with content of a source that is Ask towards that peer still goes to the owner, and one with a
+Never source is blocked. It never covers another thread or another peer, so free text that opens a
+new thread goes to the owner even while a conversation is trusted. The agent cannot ask for, extend
+or end conversation trust.
 
 The agent sees the state in the `thread_trust` object of every `propose` output and `inbox` item:
 `active` tells whether a conversation mandate covers the thread, `ends_at` when it ends and
