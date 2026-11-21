@@ -149,7 +149,10 @@ fn open_mandate_releases_at_a0_only_without_any_flag() {
         tripwire: true,
         ..free("sounds good")
     };
-    assert_eq!(assess(&r, &tripwire).required, Required::Level(Level::A2));
+    assert_eq!(
+        assess(&r, &tripwire).required,
+        Required::Level(Level::A2Plus)
+    );
 }
 
 #[test]
@@ -170,7 +173,7 @@ fn dictionary_hit_is_case_insensitive_and_highlighted() {
 #[test]
 fn canary_blocks_even_when_obfuscated() {
     let mut r = OwnerRules::default();
-    r.add_canary("PASEKA-CANARY-7f3a9c").unwrap();
+    r.add_canary(CanaryId(7), "PASEKA-CANARY-7f3a9c").unwrap();
     for text in [
         "fyi PASEKA-CANARY-7f3a9c",
         "fyi paseka canary 7f3a9c",
@@ -180,12 +183,32 @@ fn canary_blocks_even_when_obfuscated() {
     ] {
         let a = assess(&r, &free(text));
         assert_eq!(a.required, Required::Block, "{text}");
+        assert_eq!(a.canaries, vec![CanaryId(7)], "{text}");
     }
-    assert_eq!(
-        assess(&r, &free("nothing here")).required,
-        Required::Level(Level::A1)
+    let clean = assess(&r, &free("nothing here"));
+    assert_eq!(clean.required, Required::Level(Level::A1));
+    assert_eq!(clean.canaries, vec![]);
+    assert_eq!(r.add_canary(CanaryId(8), "ab-1"), Err(CanaryTooShort));
+}
+
+#[test]
+fn every_matching_canary_is_named_by_id_and_no_flag_carries_its_marker() {
+    let mut r = OwnerRules::default();
+    r.add_canary(CanaryId(1), "PASEKA-CANARY-7f3a9c").unwrap();
+    r.add_canary(CanaryId(2), "PASEKA-CANARY-unused").unwrap();
+    r.add_canary(CanaryId(3), "PASEKA-CANARY-b81d04").unwrap();
+    let a = assess(
+        &r,
+        &free("fyi PASEKA-CANARY-b81d04 and PASEKA-CANARY-7f3a9c"),
     );
-    assert_eq!(r.add_canary("ab-1"), Err(CanaryTooShort));
+    assert_eq!(a.canaries, vec![CanaryId(1), CanaryId(3)]);
+    assert!(
+        a.flags
+            .iter()
+            .all(|f| !f.detail.contains("7f3a9c") && !f.detail.contains("b81d04")),
+        "{:?}",
+        a.flags
+    );
 }
 
 #[test]

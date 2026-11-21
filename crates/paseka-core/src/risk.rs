@@ -86,6 +86,8 @@ pub struct Assessment {
     pub required: Required,
     /// Flags for the owner's approval screen.
     pub flags: Vec<Flag>,
+    /// Canaries found, by id, in settings order; empty when none matched.
+    pub canaries: Vec<CanaryId>,
 }
 
 impl Assessment {
@@ -120,13 +122,18 @@ pub struct SourceRead {
 pub struct OwnerRules {
     /// Dictionary terms, folded.
     dictionary: Vec<Vec<char>>,
-    /// Canary markers, normalised.
-    canaries: Vec<String>,
+    /// Canary markers, normalised, with their ids.
+    canaries: Vec<(CanaryId, String)>,
     /// Shingle sets of sensitive documents.
     fingerprints: Vec<BTreeSet<u64>>,
     /// Maximum length before a flag; [`DEFAULT_MAX_LEN`] when zero.
     pub max_len: usize,
 }
+
+/// The gate's id of one canary marker in a tenant's settings. Notices and the journal name a
+/// canary by this id, never by its marker.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct CanaryId(pub u32);
 
 /// A canary marker too short to be unique.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -141,16 +148,16 @@ impl OwnerRules {
         }
     }
 
-    /// Adds a canary marker. Matching ignores case, punctuation and whitespace.
+    /// Adds `marker` as canary `id`. Matching ignores case, punctuation and whitespace.
     ///
     /// # Errors
     /// [`CanaryTooShort`] when fewer than 8 letters or digits remain after normalisation.
-    pub fn add_canary(&mut self, marker: &str) -> Result<(), CanaryTooShort> {
+    pub fn add_canary(&mut self, id: CanaryId, marker: &str) -> Result<(), CanaryTooShort> {
         let n = normalise(marker);
         if n.chars().count() < MIN_CANARY_CHARS {
             return Err(CanaryTooShort);
         }
-        self.canaries.push(n);
+        self.canaries.push((id, n));
         Ok(())
     }
 
@@ -178,7 +185,8 @@ pub struct Draft<'a> {
     pub sources: &'a [SourceRead],
     /// Level suggested by a fuzzy check (embeddings, classifier). Can only raise, to A2 at most.
     pub fuzzy_hint: Option<Level>,
-    /// Whether the tenant is in tripwire mode (S11).
+    /// Whether tripwire mode is in effect for the tenant (S11,
+    /// [`crate::tripwire::TripwireBook::in_effect`]).
     pub tripwire: bool,
     /// Whether an active open mandate matches this revision (S12).
     pub open_mandate: bool,
@@ -193,6 +201,7 @@ pub fn assess(rules: &OwnerRules, d: &Draft<'_>) -> Assessment {
     let mut a = Assessment {
         required: Required::Level(base),
         flags: structural(d.text),
+        canaries: canary_hits(rules, d.text),
     };
     let max_len = if rules.max_len == 0 {
         DEFAULT_MAX_LEN
@@ -245,9 +254,9 @@ pub fn assess(rules: &OwnerRules, d: &Draft<'_>) -> Assessment {
     }
     if d.tripwire {
         a.flags.push(flag(FlagKind::Tripwire, None, String::new()));
-        a.raise(Required::Level(Level::A2));
+        a.raise(Required::Level(crate::tripwire::TRIPWIRE_LEVEL));
     }
-    if canary_hit(rules, d.text) {
+    if !a.canaries.is_empty() {
         a.flags.push(flag(FlagKind::Canary, None, String::new()));
         a.raise(Required::Block);
     }
@@ -573,9 +582,9 @@ fn dictionary_hits(rules: &OwnerRules, text: &str) -> Vec<Flag> {
 }
 
 /// Canary search over the text and over decoded base64/hex runs, ignoring case and separators.
-fn canary_hit(rules: &OwnerRules, text: &str) -> bool {
+fn canary_hits(rules: &OwnerRules, text: &str) -> Vec<CanaryId> {
     if rules.canaries.is_empty() {
-        return false;
+        return Vec::new();
     }
     let mut haystacks = vec![normalise(text)];
     for (s, e) in runs(text, is_b64) {
@@ -597,7 +606,9 @@ fn canary_hit(rules: &OwnerRules, text: &str) -> bool {
     rules
         .canaries
         .iter()
-        .any(|c| haystacks.iter().any(|h| h.contains(c.as_str())))
+        .filter(|(_, c)| haystacks.iter().any(|h| h.contains(c.as_str())))
+        .map(|(id, _)| *id)
+        .collect()
 }
 
 fn shingles(text: &str) -> BTreeSet<u64> {

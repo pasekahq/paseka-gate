@@ -175,8 +175,40 @@ evidence or mandates (SP-8). The owner sees all of them.
 
 ### 4.3 Tripwire mode
 
-A canary hit puts the tenant into tripwire mode: open mandates stop auto-releasing and every new
-draft needs at least A2, until the owner clears tripwire mode in the Mini App.
+A canary hit (S7, §6.2) blocks its draft. What else it does is the tenant's tripwire mode
+setting (§9.4, `paseka_core::tripwire::TripwireMode`):
+
+- full alarm, the default: the tenant enters tripwire mode. While it is active every open
+  mandate is inactive (§9.1) and every draft of the tenant needs at least A2+ (S11), so with the
+  MVP channels every approval request goes through `telegram-miniapp-pin` (§6.2). A higher
+  computed level and a block stay as they are.
+- draft block only: the draft with the canary is blocked and nothing else changes.
+
+A hit while tripwire mode is active keeps the earlier triggers, adds its own and revokes a live
+clear request. The mode setting does not change while tripwire mode is active.
+
+Each hit sends the owner one notice in the consent chat (`paseka_core::tripwire::Notice`): the
+tenant, the peer, the draft id and revision, the ids of the canaries that matched, the window of
+the gate's MCP journal that covers the agent turn which proposed the revision, and whether the
+hit entered tripwire mode, joined an active one or blocked the draft only. The notice never
+contains a canary marker or the blocked body; the owner reads the draft where the owner reads
+every draft, in the Mini App.
+
+Only the owner clears tripwire mode. When the owner asks to clear it in the Mini App, the gate
+opens a clear request `{tenant, request_id, nonce, issued_at, expires_at}` with the prompt TTL of
+§7.1, replacing an earlier one. A clear decision is accepted only when all hold:
+
+1. tripwire mode is active for the tenant resolved from the channel (§12);
+2. the request is that tenant's live clear request and the nonce is its nonce;
+3. the prompt TTL has not passed;
+4. the channel satisfies A2+: in the MVP `telegram-miniapp-pin`, with the PIN checked and
+   limited as in §7.5;
+5. the approver is a configured approver of the tenant.
+
+A refused decision leaves tripwire mode active and the request open. `telegram-button`,
+`telegram-miniapp`, an open mandate and the agent cannot clear tripwire mode (CA-53); the agent
+interface has no operation on it. A tenant without a PIN sets one by the local CLI (§7.5) and
+then clears.
 
 ## 5. Agent interface
 
@@ -275,7 +307,7 @@ releases free text. The agent cannot read or edit any input of evaluation except
 | S8 fingerprints of sensitive folders (shingles, MinHash), verbatim or near-verbatim | exact | A2+ |
 | S9 sources: MCP proxy log shows reads from sensitive folders during a peer-started turn | exact | A2+ |
 | S10 embedding similarity, classifier | fuzzy | A2 at most |
-| S11 tripwire mode (§4.3) | exact | A2 |
+| S11 tripwire mode active (§4.3) | exact | A2+ |
 | S12 open mandate (§9.1) | exact | A0 only if every other stage returned no flag |
 
 Rules:
@@ -299,7 +331,8 @@ Rules:
   replaces the required one. In the MVP an A3 requirement goes through `telegram-miniapp-pin`
   (A2+).
 - The owner can change default floors only through consent in the Mini App (§9.4). The S1 floor
-  for free text, the S7 block and the no-flag condition of S12 are not configurable.
+  for free text, the S7 block, the S11 floor and the no-flag condition of S12 are not
+  configurable; whether a canary hit enters tripwire mode is the mode setting of §4.3.
 
 ### 6.3 Channel strength
 
@@ -616,11 +649,12 @@ The agent influences only the choice of doc, section and the note.
 ### 9.4 Security settings
 
 Approvers, peers, trust levels, open mandates, shelves, templates, dictionary, canaries,
-fingerprint sources, default floors and windows are security settings. After the first-run
+fingerprint sources, default floors, windows and the tripwire mode (§4.3) are security settings. After the first-run
 ceremony they change only through an owner decision in the Mini App at A2 or higher, journaled
 with evidence. The bootstrap config is read only before the ceremony; later differences are
 reported to the owner and ignored (CA-23). The PIN and its kind change only as §7.5 states:
-through consent with the old PIN, or by the local CLI on the gate host.
+through consent with the old PIN, or by the local CLI on the gate host. The tripwire mode does
+not change while tripwire mode is active; only a clear with A2+ ends it (§4.3).
 
 ## 10. Gate-to-gate wire
 

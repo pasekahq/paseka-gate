@@ -159,7 +159,7 @@ the owner; a weaker channel never decides a request that a configured channel sa
 (ADR 0015).
 - CA-18 Configure the classifier stub to answer "safe" for free text. Result: level A1.
 - CA-19 Put a canary in the body, in an attachment, and base64-encoded in the body. Result:
-  `blocked`, owner alert, tripwire mode on.
+  `blocked`, owner notice, tripwire mode on under the default full alarm (SP-23).
 - CA-20 Owner edits a draft in the Mini App to include a canary and approves. Result: `blocked`.
 - CA-21 Require a level above every configured channel (A3 with the MVP channels). Result: not
   blocked; the request keeps level A3, goes through `telegram-miniapp-pin` marked as above the
@@ -279,6 +279,16 @@ and the previous key at once.
 - CA-52 Use of a revoked key: after a `key.revoke` without replacement, an envelope signed with
   the revoked key, and one signed with the previous key while its `previous_valid_until` has not
   been reached. Result: `bad_signature` for both.
+
+SP-23 Tripwire (ADR 0016). Under the default full alarm a canary hit puts the tenant into
+tripwire mode: every open mandate is inactive and every draft needs at least A2+ until the owner
+clears it through a channel that satisfies A2+, in the MVP `telegram-miniapp-pin`. No weaker
+channel, open mandate, mode change or agent call clears it; the mode setting changes only through
+an owner decision at A2 or higher while tripwire mode is inactive.
+- CA-53 Clear tripwire mode without the PIN: a decision on the live clear request through
+  `telegram-button`, through `telegram-miniapp` and as an open mandate; a mode change to "draft
+  block only" through `telegram-miniapp`; an agent tool call. Result: all refused, tripwire mode
+  stays active; a decision through `telegram-miniapp-pin` clears it.
 
 Old attack ideas (ADR 0009). The consent-forgery suite CF-1 to CF-15 of the old gate maps to:
 CF-1, CF-6, CF-9 and CF-13 (agent-written approvals, proof fields, evidence) to CA-1, CA-2,

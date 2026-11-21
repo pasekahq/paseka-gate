@@ -401,14 +401,7 @@ impl Draft {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testkit::{draft_id, mvp_channels, nonce, peer, request_id, tenant, thread};
-
-    fn seed(i: u8) -> RequestSeed {
-        RequestSeed {
-            request_id: request_id(i),
-            nonce: nonce(i),
-        }
-    }
+    use crate::testkit::{draft_id, mvp_channels, nonce, peer, seed, tenant, thread};
 
     fn rev(body: &str) -> Revision {
         Revision {
