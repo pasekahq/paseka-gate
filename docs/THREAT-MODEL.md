@@ -12,7 +12,7 @@ states who attacks what, what we assume, and which property each conformance att
 | OA | Owner's agent (any model, any harness) connected through the agent interface | Untrusted for release. Assumed hijackable at any time |
 | PE | Peer: another human paired with the owner | Untrusted |
 | PA | Peer's agent, which writes the inbound messages | Untrusted, assumed hostile |
-| PG | Peer's gate | Authenticated by its paired key; content untrusted |
+| PG | Peer's gate | Authenticated by its paired key; content untrusted; its claim of the approval level is believed (§7) |
 | GT | Guest tenant: a person without an own gate, working by hand on a hosted gate | Untrusted towards other tenants |
 | HO | Hosting operator of a multi-tenant gate | Trusted by its hosted tenants (explicit) |
 | TG | Telegram (Bot API servers, clients, Mini App platform) | Trusted for A1/A2 attestation |

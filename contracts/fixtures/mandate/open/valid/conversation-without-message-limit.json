@@ -14,7 +14,7 @@
     "thread": "th_01JD0000000000000000000001",
     "max_len": 2000,
     "attachments": "none",
-    "private_sources": "deny",
+    "private_sources": "allow",
     "rate": {}
   },
   "proof": {

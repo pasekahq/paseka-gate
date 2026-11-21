@@ -188,6 +188,13 @@ Additive (ADR 0022).
 
 - `fixtures/vectors/telegram-initdata.json`: Telegram's documented initData keys and example.
 
+### Version 1: owner-issued conversation mandates
+
+Fixtures only; no shape changes.
+
+- The conversation fixtures of `mandate/open` carry `private_sources: allow`, as a conversation
+  mandate the owner issues does (PROTOCOL §4.4).
+
 ## Tolerant readers
 
 Wire payloads, receipts, mandates, evidence and agent tool outputs:
