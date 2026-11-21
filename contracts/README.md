@@ -29,9 +29,10 @@ the test keys listed in the file. Each test key has a seed, SHA-256('paseka test
 and an address, the tenant id. Ed25519 signatures are deterministic, so implementations MUST
 reproduce the compact strings exactly from the given claims serialization and seed.
 
-The file is generated, never edited by hand: `PASEKA_WRITE_VECTORS=1 cargo test -p paseka-core
---test vectors` writes it from the seeds, and the same test without the variable fails when the
-file differs from what the generator writes.
+The file and the closed mandate inside the `wire/envelope` fixtures are generated, never edited
+by hand: `PASEKA_WRITE_VECTORS=1 cargo test -p paseka-core --lib vectors::` writes them from the
+seeds, and the same test without the variable fails when a file differs from what the generator
+writes.
 
 All fixture data is synthetic: alice, bob, carol, example.org.
 

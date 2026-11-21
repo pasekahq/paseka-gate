@@ -109,14 +109,7 @@ mod tests {
     use serde_json::Value;
 
     use super::*;
-
-    fn vectors() -> Value {
-        let path = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../contracts/fixtures/vectors/digests.json"
-        );
-        serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
-    }
+    use crate::testkit::vectors;
 
     fn s<T: serde::de::DeserializeOwned>(v: &Value) -> T {
         serde_json::from_value(v.clone()).unwrap()

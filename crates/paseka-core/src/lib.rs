@@ -21,3 +21,5 @@ pub mod token;
 
 #[cfg(test)]
 pub(crate) mod testkit;
+#[cfg(test)]
+mod vectors;

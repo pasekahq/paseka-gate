@@ -165,22 +165,9 @@ impl Receiver {
 #[cfg(test)]
 mod tests {
     use paseka_proto::envelope::MessageData;
-    use serde_json::Value;
 
     use super::*;
-
-    fn vectors() -> Value {
-        let path = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../contracts/fixtures/vectors/digests.json"
-        );
-        serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
-    }
-
-    fn seed_key(v: &Value, name: &str) -> SigningKey {
-        let hex = v["signing_keys"][name]["seed_hex"].as_str().unwrap();
-        SigningKey::from_bytes(&Sha256::from_hex(hex).unwrap().0)
-    }
+    use crate::testkit::{seed_key, vectors};
 
     fn setup() -> (Receiver, String, Envelope<MessageData>, UnixSecs) {
         let v = vectors();

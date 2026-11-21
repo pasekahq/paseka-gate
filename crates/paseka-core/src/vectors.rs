@@ -1,17 +1,22 @@
-//! Generator of `contracts/fixtures/vectors/digests.json` from the synthetic seeds.
+//! Generator of `contracts/fixtures/vectors/digests.json` and of the closed mandate inside the
+//! `wire/envelope` fixtures, from the synthetic seeds.
 //!
-//! `cargo test -p paseka-core --test vectors` fails unless the file is exactly the generator's
-//! output; with `PASEKA_WRITE_VECTORS=1` it rewrites the file instead.
+//! `cargo test -p paseka-core --lib vectors::` fails unless those files are exactly the
+//! generator's output; with `PASEKA_WRITE_VECTORS=1` it rewrites them instead.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use ed25519_dalek::SigningKey;
-use paseka_core::envelope::seal;
-use paseka_core::hash::{Release, approval_challenge, content_sha256, release_digest, sas, sha256};
-use paseka_core::mandate::{CLOSED_TTL_SECS, issue};
-use paseka_core::token::{self, key_id};
+use serde::Serialize;
+use serde_json::Value;
+
+use crate::envelope::seal;
+use crate::hash::{Release, approval_challenge, content_sha256, release_digest, sas, sha256};
+use crate::mandate::{CLOSED_TTL_SECS, issue};
+use crate::testkit::{VECTORS_PATH, event, pairing_id, tenant, thread, ulid};
+use crate::token::{self, key_id};
 use paseka_proto::envelope::{
     Envelope, EventType, MessageData, Receipt, ReceiptStatus, WireAttachment,
 };
@@ -20,10 +25,9 @@ use paseka_proto::jws::Typ;
 use paseka_proto::mandate::{AttachmentMeta, ClosedKind, ClosedMandate, ClosedProof};
 use paseka_proto::pairing::{PairAccept, PairAcceptType, PairRequest, PairRequestType};
 use paseka_proto::{
-    Address, EventId, KeyId, Level, MandateId, Nonce, PairingId, RequestId, Sha256, TenantId,
-    ThreadId, UnixSecs, V1,
+    Address, EventId, KeyId, Level, MandateId, Nonce, RequestId, Sha256, TenantId, ThreadId,
+    UnixSecs, V1,
 };
-use serde::Serialize;
 
 const AT: UnixSecs = 1_794_268_830;
 const BODY: &str = "Bob thinks the plan is fine.\nSee you on Monday.";
@@ -160,26 +164,6 @@ impl Party {
             address: self.address(),
         }
     }
-}
-
-fn ulid(prefix: &str, i: u8) -> String {
-    format!("{prefix}01JD{i:0>22}")
-}
-
-fn tenant(i: u8) -> TenantId {
-    TenantId::new(ulid("t_", i)).expect("fixture id")
-}
-
-fn thread(i: u8) -> ThreadId {
-    ThreadId::new(ulid("th_", i)).expect("fixture id")
-}
-
-fn event(i: u8) -> EventId {
-    EventId::new(ulid("e_", i)).expect("fixture id")
-}
-
-fn pairing(i: u8) -> PairingId {
-    PairingId::new(ulid("p_", i)).expect("fixture id")
 }
 
 fn b64u_nonce(bytes: &[u8; 16]) -> Nonce {
@@ -335,7 +319,7 @@ fn pairing_messages(
     let request = PairRequest {
         v: V1,
         kind: PairRequestType::PairRequest,
-        id: pairing(1),
+        id: pairing_id(1),
         iss: bob.address(),
         aud: alice.address(),
         key: bob.kid(),
@@ -348,7 +332,7 @@ fn pairing_messages(
     let accept = PairAccept {
         v: V1,
         kind: PairAcceptType::PairAccept,
-        id: pairing(2),
+        id: pairing_id(2),
         iss: alice.address(),
         aud: bob.address(),
         key: alice.kid(),
@@ -458,21 +442,57 @@ fn sign<T: Serialize>(key: &SigningKey, typ: Typ, payload: &T) -> String {
     )
 }
 
-fn path() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../contracts/fixtures/vectors/digests.json")
+fn envelope_fixtures() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../contracts/fixtures/wire/envelope")
+}
+
+/// `text` of an envelope fixture with its `data.mandate`, if any, replaced by `mandate`; a
+/// fixture whose mandate lacks the SD-JWT `~` keeps lacking it.
+fn with_mandate(text: &str, mandate: &str) -> String {
+    let fixture: Value = serde_json::from_str(text).expect("fixture is JSON");
+    let Some(old) = fixture["data"]["mandate"].as_str() else {
+        return text.to_owned();
+    };
+    let new = if old.ends_with('~') {
+        mandate
+    } else {
+        mandate.trim_end_matches('~')
+    };
+    text.replace(&format!("\"{old}\""), &format!("\"{new}\""))
+}
+
+/// Every generated file with its content.
+fn outputs() -> Vec<(PathBuf, String)> {
+    let vectors = generate();
+    let mut text = serde_json::to_string_pretty(&vectors).expect("vectors serialise");
+    text.push('\n');
+    let mut out = vec![(PathBuf::from(VECTORS_PATH), text)];
+    for dir in ["valid", "invalid"] {
+        for entry in std::fs::read_dir(envelope_fixtures().join(dir)).expect("fixture dir") {
+            let path = entry.expect("dir entry").path();
+            let text = std::fs::read_to_string(&path).expect("fixture text");
+            out.push((
+                path,
+                with_mandate(&text, &vectors.signed.closed_mandate.compact),
+            ));
+        }
+    }
+    out
 }
 
 #[test]
-fn digests_json_is_the_generator_output() {
-    let mut text = serde_json::to_string_pretty(&generate()).expect("vectors serialise");
-    text.push('\n');
-    if std::env::var_os("PASEKA_WRITE_VECTORS").is_some_and(|v| v == "1") {
-        std::fs::write(path(), &text).expect("vectors written");
-        return;
+fn digests_json_and_envelope_fixture_mandates_are_the_generator_output() {
+    let write = std::env::var_os("PASEKA_WRITE_VECTORS").is_some_and(|v| v == "1");
+    for (path, text) in outputs() {
+        if write {
+            std::fs::write(&path, &text).expect("generated file written");
+            continue;
+        }
+        let on_disk = std::fs::read_to_string(&path).expect("generated file");
+        assert!(
+            on_disk == text,
+            "{} differs from the generator; run PASEKA_WRITE_VECTORS=1 cargo test -p paseka-core --lib vectors::",
+            path.display()
+        );
     }
-    let on_disk = std::fs::read_to_string(path()).expect("vectors file");
-    assert!(
-        on_disk == text,
-        "digests.json differs from the generator; run PASEKA_WRITE_VECTORS=1 cargo test -p paseka-core --test vectors"
-    );
 }

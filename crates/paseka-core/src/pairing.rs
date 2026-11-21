@@ -66,20 +66,12 @@ mod tests {
     use serde_json::Value;
 
     use super::*;
-
-    fn vectors() -> Value {
-        let path = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../contracts/fixtures/vectors/digests.json"
-        );
-        serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
-    }
+    use crate::testkit::{seed_key, vectors};
 
     fn party(v: &Value, name: &str) -> (SigningKey, KeyId, Address) {
         let k = &v["signing_keys"][name];
-        let seed = paseka_proto::Sha256::from_hex(k["seed_hex"].as_str().unwrap()).unwrap();
         (
-            SigningKey::from_bytes(&seed.0),
+            seed_key(v, name),
             serde_json::from_value(k["key_id"].clone()).unwrap(),
             serde_json::from_value(k["address"].clone()).unwrap(),
         )
