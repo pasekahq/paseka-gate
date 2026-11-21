@@ -113,8 +113,8 @@ and `contracts/`.
 2. Agent server: `paseka mcp` (stdio relay) and loopback HTTP over `tools::ToolCall`, error
    mapping, agent rate and pending limits, tenant from the agent token. Unlocks CA-5, CA-38,
    CA-43 and d4.
-3. Consent: consent bot (A1) and Mini App (A2) with `initData` verification and tests from
-   Telegram's vectors; first-run ceremony. Unlocks CA-4, CA-11, CA-14, CA-16, CA-17, CA-23 and
+3. Consent: consent bot (A1) and Mini App (A2) with the HMAC step of `initData` and the server
+   around `initdata::InitData::verify`; first-run ceremony. Unlocks CA-4, CA-11, CA-14, CA-16, CA-17, CA-23 and
    d7, d8, d16.
 4. Peers: pairing messages and invite codes, outbox with retry, inbound endpoint around
    `envelope::Receiver`, peer volume limits, a two-gate loopback test. Unlocks CA-35, CA-37,

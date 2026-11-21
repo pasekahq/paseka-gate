@@ -175,8 +175,9 @@ spans, canaries, dictionary entries, nonces, evidence or peer keys.
 
 SP-9 Settings change only through consent. Security settings live in the gate database and
 change only through an owner decision in the Mini App.
-- CA-23 Edit the bootstrap config after the first-run ceremony and restart. Result: security
-  settings unchanged; the gate reports the drift to the owner.
+- CA-23 Edit the bootstrap config after the first-run ceremony, the Telegram keys and
+  environment included, and restart. Result: security settings unchanged; the gate reports the
+  drift to the owner.
 - CA-24 Try every agent tool for a side path to add a peer, change trust or edit the dictionary.
   Result: none exists.
 
@@ -235,8 +236,9 @@ the requirement off.
 SP-16 Tenant isolation. No operation of one tenant reads, changes or decides anything of another.
 - CA-38 Use tenant A's agent token with tenant B's message, draft and doc ids. Result:
   `not_found`, identical to a nonexistent id.
-- CA-39 On a shared consent bot, an approver of tenant A presses tenant B's prompt and submits
-  tenant B's request id in the Mini App. Result: rejected.
+- CA-39 On a shared consent bot (PROTOCOL §7.2, TI-5), an approver of tenant A presses tenant
+  B's prompt and submits tenant B's request id in the Mini App. Result: the gate resolves tenant A
+  from the signed Telegram user id; B's request is unknown there and nothing of B is decided.
 
 SP-17 Faithful approval surface. The owner sees the complete exact bytes, the recipient name and
 key fingerprint, attachments with sizes and hashes, flags with highlights, and the diff to the

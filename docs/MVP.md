@@ -38,7 +38,7 @@ Each item is done when the stated check passes. "CA" means a named conformance a
 | d5 | A closed mandate releases exactly once, only the hashed bytes, only to its recipient, only before `exp`. | CA-3, CA-10, CA-12, CA-13, CA-34; core tests of `mandate::verify_received`. |
 | d6 | Editing content after consent (by agent or by a swap between preview and send) invalidates the consent. | CA-6, CA-7, CA-8, CA-9. |
 | d7 | A1: a button press in the consent bot yields a mandate the release check accepts; a press for another request id or nonce is rejected. | Integration test with a fake Telegram Bot API; CA-4, CA-10, CA-15, CA-47. |
-| d8 | A2: Mini App `initData` is accepted only with a valid Ed25519 third-party signature and a fresh `auth_date`; HMAC-only or stale data is rejected. | Unit tests with Bot API test vectors; CA-11, CA-14, CA-16, CA-17. |
+| d8 | A2: Mini App `initData` is accepted only with a valid Ed25519 third-party signature by the configured Telegram key and a fresh `auth_date`; HMAC-only or stale data is rejected. | `paseka-core` `initdata` tests with the documented keys and example (`contracts/fixtures/vectors/telegram-initdata.json`); CA-11, CA-14, CA-16, CA-17. |
 | d9 | A0 open mandates release only within constraints (template, length, rate, window); a second open mandate for the same scope is refused while one is live. | `paseka-core` `open` tests; CA-25, CA-26, CA-27, CA-28. |
 | d10 | Risk evaluation is monotonic: free text to a peer is at least A1; structural flag or dictionary hit gives A2 with highlights; a canary blocks even with valid consent and alerts the owner; content of a Never source is blocked under consent and open mandates, and Never changes only on the settings page. | `paseka-core` `risk` and `source` tests; CA-18, CA-19, CA-20, CA-21, CA-40, CA-41, CA-54. |
 | d11 | The agent cannot edit the dictionary, policies, peers or approvers; changes go through consent. | CA-23, CA-24. |
@@ -46,7 +46,7 @@ Each item is done when the stated check passes. "CA" means a named conformance a
 | d13 | Tenant isolation: no operation of tenant A reads, releases or lists data of tenant B. | CA-32, CA-38, CA-39; `TenantMap` tests. |
 | d14 | Two gates pair by deep link, exchange Ed25519 keys and deliver signed envelopes; tampered, replayed or unknown-key envelopes are rejected; delivery retries survive a restart. | Two-gate integration test on loopback; CA-12, CA-31, CA-33, CA-35, CA-36, CA-37, CA-46. |
 | d15 | Unknown fields are ignored; an unknown enum value in a security field is rejected. | `crates/paseka-proto/tests/contracts.rs` over `contracts/fixtures/`; proto unit tests for authority-bearing enums. |
-| d16 | The first-run ceremony blocks all release until the owner confirms the plain-words config in the Mini App; afterwards a changed security section in the config file is refused. | Integration test of `paseka init` plus `serve`; CA-23. |
+| d16 | The first-run ceremony blocks all release until the owner confirms the plain-words config in the Mini App with live `initData` whose Ed25519 signature verifies with the configured Telegram key; afterwards a changed security section in the config file is refused. | Integration test of `paseka init` plus `serve`; CA-23. |
 | d17 | `paseka conformance` runs the full attack suite against a local install and exits non-zero on any failure. | Run in CI against the release binary; `crates/paseka/tests/cli.rs` locally. |
 | d18 | A rebuild from the tag with `ci/repro-build.sh` reproduces the released binary hash; the release carries Sigstore provenance with a Rekor entry. | CI job rebuilding on a second runner; `cosign verify-blob-attestation`. |
 | d19 | The audit checklist answers each question with a file:line reference that exists at the tag. | CI script checking every reference resolves. |
@@ -100,7 +100,11 @@ get the S2 flag, which is not a registry source.
 2. M2 Local gate: storage (rusqlite), MCP server and HTTP API for the agent, journal, policy
    engine, attachment bytes with image metadata removal (PROTOCOL §3.1). Covers d4, d11.
 3. M3 Consent: consent bot (A1), Mini App (A2) with Ed25519 `initData` verification, first-run
-   ceremony. The A2+ PIN channel (PROTOCOL §7.5): the owner sets the PIN at the first-run
+   ceremony that does not complete without a live `initData` signature verified with the
+   configured Telegram key (PROTOCOL §9.4). The Telegram keys and environment as security
+   settings, changed through consent or the local CLI. Consent bot modes (PROTOCOL §7.2): the
+   self-host tenant's own bot and the hosted shared bot that resolves the tenant only from the
+   signed Telegram user id (TI-5, CA-39). The A2+ PIN channel (PROTOCOL §7.5): the owner sets the PIN at the first-run
    ceremony; the Argon2id verifier lands here, with the ADR for its dependency (size, tree cost,
    budget measurement); the per-tenant PIN pepper (generation from the OS CSPRNG, its file
    outside the database, the missing-pepper error and recovery through the local CLI) and the
@@ -121,4 +125,5 @@ get the S2 flag, which is not a registry source.
    builds the tarball of `skills/install/` reproducibly at a `skill-vX.Y.Z` tag, signs it with a
    Sigstore build provenance attestation, attaches it to that GitHub release, and the hash line is
    published in the release notes, the organisation README (`pasekahq/.github`) and the project
-   owner's announcement channel. Covers d2, d17, d18, d19, d20, d22.
+   owner's announcement channel. A hosted tenant's own consent bot (PROTOCOL §7.2), kept by
+   the migration to self-host. Covers d2, d17, d18, d19, d20, d22.
