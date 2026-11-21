@@ -255,9 +255,13 @@ conversation trust to agents is the `description` of
 - One MCP server per tenant, exposed as tools. Local agents use stdio; others use MCP Streamable
   HTTP on loopback (JSON responses). Non-MCP clients use plain HTTP: `POST /agent/v1/<tool>` with
   the tool input as body and the tool output as response.
-- The stdio server is a relay process running as the agent's user. It holds a per-tenant agent
-  token and forwards calls over a local socket to the gate process, which holds all authority.
-  HTTP clients send the token as `Authorization: Bearer <token>`.
+- Every registered agent (§5.4) has its own agent token, for both transports. The Mini App shows
+  it once when the owner registers the agent, and the owner stores it for that agent.
+- The stdio server is a relay process running as the agent's user. It reads its agent's token
+  from the file named by `--token-file` (readable only by that user; a leading `~/` is that
+  user's home, since MCP clients start the relay without a shell), presents it to the gate
+  with every call, and forwards calls over a local socket to the gate process, which holds all
+  authority. HTTP clients send the token as `Authorization: Bearer <token>`.
 - The agent token selects the tenant (§12) and the registered agent (§5.4). It grants the tools
   below and nothing else.
 - The gate MUST reject inputs with unknown fields (`invalid_input`). Agents read the advertised
@@ -345,6 +349,12 @@ shows it labelled as the owner's statement:
 - in the Mini App agent view: each registered agent with its level;
 - in the Mini App peer view: the level of every registered agent of the tenant, since each one
   reads incoming messages from every peer.
+
+The gate attributes a draft to the registered agent whose token proposed it (§5.1). When it
+cannot attribute a draft to exactly one registered agent, the prompt shows the level of every
+registered agent of the tenant, with the L1 marker if any of them is at `L1`. Attribution is as
+strong as the separation of token files: agents running as the same unix user can read each
+other's tokens.
 
 Wherever the gate shows an agent at `L1`, it adds the marker "Incoming messages from peers are
 read without protection." The owner cannot dismiss the marker; it goes away only when the owner

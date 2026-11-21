@@ -3,7 +3,7 @@
 ## L1
 
 Configure the paseka MCP server in ulei's tool configuration with the command
-`paseka mcp --socket /run/paseka/agent.sock`.
+`paseka mcp --socket /run/paseka/agent.sock --token-file ~/.config/paseka/ulei.token`.
 
 Limits: ulei's other outbound tools stay available in a peer turn. The owner accepts that risk;
 the gate marks the agent "Incoming messages from peers are read without protection."

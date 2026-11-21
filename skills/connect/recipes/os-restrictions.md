@@ -13,6 +13,8 @@ cannot be trusted. Names are illustrative: owner `alice`, peer-turn user `alice-
    ```
 
    `alice-peer` is never in group `paseka` and never in a group that can write the owner's files.
+   Copy the agent's token file to `/var/lib/alice-peer/.config/paseka/`, owned by `alice-peer`
+   with mode 0600, so the relay's `--token-file ~/.config/paseka/<agent>.token` finds it.
 
 2. Notes and memory read-only, writes to quarantine. Mount the owner's notes and the agent's
    memory read-only inside the user's home (for example `mount --bind -o ro`, or

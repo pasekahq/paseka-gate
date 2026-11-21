@@ -56,9 +56,11 @@ Tell the owner this, and act on it when you are the connected agent. Details:
 2. Ask the owner to register the agent in the Mini App ("Agents", "Add") with its name and the
    chosen level. The level is the agent's protection level setting, a security setting the owner
    records at A2 (`docs/PROTOCOL.md` §5.4); the agent interface has no way to set or change it.
-   To change it later the owner opens the agent in "Agents" and records another level at A2. For
-   HTTP agents the Mini App shows a token once; the owner pastes it into the agent's secret store
-   themselves.
+   To change it later the owner opens the agent in "Agents" and records another level at A2. The
+   Mini App shows the agent's token once; the owner saves it themselves, for stdio agents to
+   `~/.config/paseka/<agent>.token` (mode 0600, used by `paseka mcp --token-file`), for HTTP
+   agents to the agent's secret store. Each agent gets its own token, so the gate can show the
+   right level on each prompt.
 3. Confirm the owner's user is in group `paseka-agent` and not in `paseka`:
    `id -nG alice`.
 4. Apply the recipe for the chosen level: `recipes/<agent>.md` for L1 and L2;

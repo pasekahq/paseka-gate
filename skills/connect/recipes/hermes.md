@@ -8,7 +8,7 @@ Add the server to the `mcp_servers` section of the Hermes config:
 mcp_servers:
   paseka:
     command: paseka
-    args: ["mcp", "--socket", "/run/paseka/agent.sock"]
+    args: ["mcp", "--socket", "/run/paseka/agent.sock", "--token-file", "~/.config/paseka/hermes.token"]
 ```
 
 The consent bot must be a different Telegram bot from the one Hermes uses for chat. Never give

@@ -7,7 +7,7 @@ In `~/.codex/config.toml`:
 ```toml
 [mcp_servers.paseka]
 command = "paseka"
-args = ["mcp", "--socket", "/run/paseka/agent.sock"]
+args = ["mcp", "--socket", "/run/paseka/agent.sock", "--token-file", "~/.config/paseka/codex.token"]
 ```
 
 Limits: all other tools and the sandbox settings of the normal session stay as they are. The
@@ -29,7 +29,7 @@ web_search = false
 
 [mcp_servers.paseka]
 command = "paseka"
-args = ["mcp", "--socket", "/run/paseka/agent.sock"]
+args = ["mcp", "--socket", "/run/paseka/agent.sock", "--token-file", "~/.config/paseka/codex.token"]
 ```
 
 Copy the authentication of the main home once (`codex login` with `CODEX_HOME=~/.codex-peer`).

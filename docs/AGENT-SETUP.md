@@ -22,12 +22,16 @@ messages carries the risk.
 
 ## How an agent reaches the gate
 
-- MCP over stdio: the agent starts `paseka mcp --socket /run/paseka/agent.sock`, which forwards
-  to the running gate. The socket is group `paseka-agent`; the owner's user is in that group and
-  never in the `paseka` group.
+- Every registered agent has its own agent token, which the Mini App shows once when the owner
+  registers the agent. The gate attributes drafts to agents by it (`docs/PROTOCOL.md` §5.1).
+- MCP over stdio: the agent starts
+  `paseka mcp --socket /run/paseka/agent.sock --token-file ~/.config/paseka/<agent>.token`,
+  which presents the agent's token and forwards to the running gate. The owner saves the token
+  to that file, mode 0600. The socket is group `paseka-agent`; the owner's user is in that group
+  and never in the `paseka` group.
 - MCP over loopback HTTP, or the same contract as plain HTTP with OpenAPI, for agents that
-  cannot spawn a process: `http://127.0.0.1:8641/agent/v1`, with a per-agent token the owner
-  creates in the Mini App.
+  cannot spawn a process: `http://127.0.0.1:8641/agent/v1`, with the agent's token in the
+  agent's secret store.
 - Each connected agent is registered in the Mini App with a name and the protection level the
   owner chose (`docs/PROTOCOL.md` §5.4). The name is the agent's claim, not a verified identity.
 
