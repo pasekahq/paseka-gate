@@ -4,14 +4,14 @@ Status: Accepted
 Date: 2026-11-21
 
 ## Context
-Risk evaluation marked folders as sensitive. A fingerprint of a sensitive folder (S8) or a read
+Risk evaluation marked folders as sensitive. A fingerprint of such a folder (S8) or a read
 from one (S9) gave A2+, and a secret (S4) or a personal identifier (S5) gave A2, the same for
-every peer. The owner decided (GRILL O9 and the cross-cutting rule) to replace sensitive folders
-with a registry of sources: for every pair of source and peer the owner sets Allow, Ask or Never.
+every peer. The owner decided (GRILL O9 and the cross-cutting rule) to replace the sensitive mark
+on folders with a registry of sources: for every pair of source and peer the owner sets Allow, Ask or Never.
 Defaults are secure, weakening goes only through consent and never through the agent, Never is
 lifted only in the settings, one-time codes are always Never, and under Ask the gate picks the
 approval channel by risk. This deviates from `docs/concept/CONCEPT.md`, which names fingerprints
-of and reads from sensitive folders, and adds the security property SP-24 to
+of and reads from folders marked sensitive, and adds the security property SP-24 to
 `docs/THREAT-MODEL.md`.
 
 ## Decision

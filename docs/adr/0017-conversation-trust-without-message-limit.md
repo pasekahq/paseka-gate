@@ -4,7 +4,7 @@ Status: Accepted
 Date: 2026-11-21
 
 ## Context
-The concept describes conversation trust as "this conversation for 30 min or 10 messages". The
+The concept bounds conversation trust by 30 minutes and by a count of 10 messages. The
 owner decided otherwise (GRILL items 9 and 11): conversation trust is an open mandate on one
 thread for a duration the owner sets, 30 minutes by default, with no message limit; only the
 agent's limit of 30 drafts per peer per hour bounds it. The same decision sets 50 pending drafts
