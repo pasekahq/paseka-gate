@@ -22,7 +22,8 @@ is normative in `docs/PROTOCOL.md`; these files fix the shapes. Schema `$id`s li
 The top-level `description` of `agent/<tool>.input.schema.json`, where present, is the canonical
 description of that tool: the MCP server advertises it as the tool's `description` in
 `tools/list`, unchanged. Paragraphs are separated by a blank line. In `propose` the paragraph
-that starts with `Sources.` holds every rule about the `sources` input and nothing else.
+that starts with `Sources.` holds every rule about sources, the `sources` input and what the
+owner's source registry means for a reply, and nothing else.
 
 ## Fixtures
 
@@ -154,6 +155,17 @@ Additive (ADR 0010).
   `new_thread_needs_owner`) and the optional `thread_trust` in `DraftView` and `InboxItem`
   (PROTOCOL §4.4).
 - `agent/propose.input` gains a top-level `description`, the tool description for agents.
+
+### Version 1: conversation trust bounded by the source registry
+
+Descriptions only; no shape changes.
+
+- `agent/propose.input`: the `Sources.` paragraph of the tool description says that conversation
+  trust releases nothing the source registry does not allow towards the peer (PROTOCOL §4.4).
+- `agent/views`: `PeerView.conversation_until` gains a description: the `exp` of the one active
+  conversation mandate with the peer; `thread_trust` names the thread.
+- `mandate/open`: `constraints.private_sources` gains a description: it only narrows the source
+  registry (PROTOCOL §8.3).
 
 ## Tolerant readers
 

@@ -86,6 +86,7 @@
           ]
         },
         "private_sources": {
+          "description": "Only narrows the source registry (PROTOCOL §8.3): a revision with a registry hit matches only under `allow`, and then the registry still decides each hit; absent means `deny`.",
           "enum": [
             "deny",
             "allow"

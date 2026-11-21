@@ -37,3 +37,4 @@ points to the successor.
 | [0016](0016-tripwire-full-alarm-cleared-with-pin.md) | A canary hit raises a full alarm by default; only an A2+ decision clears it |
 | [0017](0017-conversation-trust-without-message-limit.md) | Conversation trust has no message limit; defaults live in one table |
 | [0018](0018-source-registry-allow-ask-never.md) | A source registry decides Allow, Ask or Never per source and peer |
+| [0019](0019-open-mandates-never-widen-the-source-registry.md) | Open mandates, conversation trust included, never widen the source registry |

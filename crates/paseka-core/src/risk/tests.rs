@@ -1,6 +1,6 @@
 use super::*;
 use crate::source::{Access, BuiltIn, Source, SourceKind, SourceRegistry};
-use crate::testkit::{address, free, settle, tenant};
+use crate::testkit::{CARD, DOCUMENT, FILES, MAIL, QUOTE, SECRET, address, free, settle, tenant};
 
 fn kinds(text: &str) -> Vec<FlagKind> {
     let mut k: Vec<FlagKind> = structural(text).into_iter().map(|f| f.kind).collect();
@@ -200,12 +200,6 @@ fn every_matching_canary_is_named_by_id_and_no_flag_carries_its_marker() {
     );
 }
 
-const DOCUMENT: &str = "The quarterly review found that the merger talks with the northern partner \
-    stalled because the valuation gap stayed too wide for both boards to accept.";
-const QUOTE: &str = "Between us: the merger talks with the Northern partner stalled, because the valuation gap stayed too wide.";
-const FILES: SourceId = SourceId(1);
-const MAIL: SourceId = SourceId(2);
-
 #[test]
 fn near_verbatim_quote_of_a_registered_document_needs_a2_plus_under_ask() {
     let mut r = OwnerRules::default();
@@ -247,8 +241,6 @@ fn the_registry_decision_towards_the_recipient_sets_each_source_stage_floor() {
     let reg = registry();
     let mut rules = OwnerRules::default();
     rules.add_fingerprint(FILES, DOCUMENT);
-    let secret = "key sk-abcdefghijklmnopqrstuvwxyz";
-    let card = "card 4111 1111 1111 1111";
     let read = |source| {
         [SourceRead {
             source,
@@ -263,15 +255,15 @@ fn the_registry_decision_towards_the_recipient_sets_each_source_stage_floor() {
     let a2p = Required::Level(Level::A2Plus);
     let a0 = Required::Level(Level::A0);
     let cases: [(u8, &str, &[SourceRead], bool, Required); 22] = [
-        (2, secret, &none, false, a1),
-        (2, secret, &none, true, a0),
-        (3, secret, &none, false, Required::Block),
-        (3, secret, &none, true, Required::Block),
-        (4, secret, &none, false, a2),
-        (4, secret, &none, true, a2),
-        (2, card, &none, false, a2),
-        (3, card, &none, false, a1),
-        (3, card, &none, true, a0),
+        (2, SECRET, &none, false, a1),
+        (2, SECRET, &none, true, a0),
+        (3, SECRET, &none, false, Required::Block),
+        (3, SECRET, &none, true, Required::Block),
+        (4, SECRET, &none, false, a2),
+        (4, SECRET, &none, true, a2),
+        (2, CARD, &none, false, a2),
+        (3, CARD, &none, false, a1),
+        (3, CARD, &none, true, a0),
         (2, QUOTE, &none, false, Required::Block),
         (2, QUOTE, &none, true, Required::Block),
         (3, QUOTE, &none, false, a1),
@@ -314,7 +306,7 @@ fn an_allowed_hit_is_shown_to_the_owner_with_its_source_but_is_no_flag() {
     let decisions = reg.towards(&tenant(1), &address(2));
     let d = Draft {
         decisions: &decisions,
-        ..free("key sk-abcdefghijklmnopqrstuvwxyz")
+        ..free(SECRET)
     };
     let a = assess(&OwnerRules::default(), &d);
     assert_eq!(a.flags, vec![]);
@@ -326,12 +318,11 @@ fn an_allowed_hit_is_shown_to_the_owner_with_its_source_but_is_no_flag() {
 #[test]
 fn an_allow_for_one_peer_reaches_neither_another_peer_nor_another_tenant() {
     let reg = registry();
-    let text = "key sk-abcdefghijklmnopqrstuvwxyz";
     let assess_to = |t: u8, peer: u8| {
         let decisions = reg.towards(&tenant(t), &address(peer));
         let d = Draft {
             decisions: &decisions,
-            ..free(text)
+            ..free(SECRET)
         };
         assess(&OwnerRules::default(), &d).required
     };

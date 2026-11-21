@@ -666,7 +666,8 @@ pub struct PeerView {
     pub name: String,
     /// Trust level.
     pub trust: Trust,
-    /// End of an active conversation mandate.
+    /// `exp` of the one active conversation mandate with this peer (PROTOCOL §4.4); the thread
+    /// it covers is reported only by [`ThreadTrust`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub conversation_until: Option<UnixSecs>,
     /// Shelves open to this peer.

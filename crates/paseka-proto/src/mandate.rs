@@ -108,13 +108,14 @@ pub enum AttachmentRule {
     Shelf,
 }
 
-/// Whether text derived from private sources may leave under an open mandate.
+/// Whether a revision with a source registry hit may match an open mandate (PROTOCOL §8.3).
+/// Neither value widens the registry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PrivateSources {
-    /// Not allowed.
+    /// No match, even when every hit is Allow.
     Deny,
-    /// Allowed.
+    /// A match; the registry still decides each hit.
     Allow,
 }
 

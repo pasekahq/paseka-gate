@@ -222,12 +222,21 @@ nothing else; free text that opens a new thread needs the owner. Its duration is
 `conversation_trust` setting of §14, with no message limit by default; the draft limits of §5.3
 still bound it.
 
+Conversation trust never widens the source registry (§6.4). Under an active conversation mandate
+a revision in its thread leaves without the owner only if every registry hit towards that peer is
+Allow, the mandate matches (§9.1, with `private_sources` as §8.3 defines it) and no other stage
+flagged (S12, §6.2). A hit on an Ask source goes to the owner at the stage's floor and a hit on a
+Never source blocks the draft, exactly as outside the thread.
+
 Every `DraftView`, so every `propose` output, and every `inbox` item carries `thread_trust` for
 its thread and peer (`paseka_core::open::thread_trust`). `active` is true only for a
 conversation mandate on that exact thread and peer that is active as §9.1 defines it
 (`nbf <= now < exp`, not revoked, tenant not in tripwire mode) and whose counters allow one more
 message; then `ends_at` is its `exp` and `seconds_left` is `exp - now`. `new_thread_needs_owner`
-states the new-thread rule above for the agent. The canonical text that explains threads and
+states the new-thread rule above for the agent. `PeerView.conversation_until` in the `peers`
+output is the `exp` of the one active conversation mandate with that peer (§8.3 allows one per
+peer), present exactly when that mandate is active as defined above; it does not name the
+thread, which only `thread_trust` reports. The canonical text that explains threads and
 conversation trust to agents is the `description` of
 `contracts/agent/propose.input.schema.json`.
 
@@ -418,6 +427,10 @@ decisions towards the recipient):
   cannot release the revision; the gate then selects the channel by §6.3;
 - a hit on an Allow source adds no floor and is no flag for S12; the owner's screen still shows
   it, marked as allowed.
+
+No open mandate widens these decisions: an open mandate releases a revision with a registry hit
+only when every hit is Allow and its `private_sources` constraint is `allow` (§8.3). Conversation
+trust is no exception (§4.4).
 
 Every other stage applies unchanged whatever the registry says. A read is verified when it is in
 the gate's MCP log and unverified when the agent declared it in `sources` (§5.2); both count.
@@ -664,6 +677,11 @@ Rules:
 - Maximum lifetimes: `conversation` the bound of the conversation trust setting of §14, T1 30
   days, T2 90 days, T3 7 days with renewal.
 - Conversation trust is the open mandate of §4.4.
+- `private_sources` can only narrow the source registry of §6.4, never widen it. A revision
+  with a hit on a registry source (S4, S5 personal identifiers, S8, S9), whatever its decision,
+  matches the mandate only under `allow`; under `deny`, or without the constraint, it does not
+  match, so even an Allow hit goes to the owner. Under `allow` the registry decides each hit: an
+  Allow hit is no flag, an Ask hit is a flag that S12 cannot release, a Never hit blocks.
 - Revocation takes effect for every evaluation that starts after it commits (CA-27).
 - Counters are consumed in the release transaction.
 

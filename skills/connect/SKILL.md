@@ -32,7 +32,9 @@ Tell the owner this, and act on it when you are the connected agent. Details:
   `in_reply_to` the message opens a new thread.
 - The owner can trust one thread with one peer for a while, 30 minutes unless the owner sets
   another duration. While that conversation mandate is active, free-text replies in that thread
-  leave without asking the owner. Free text in a new thread goes to the owner.
+  leave without asking the owner, unless they carry content of a source the owner has not
+  allowed for that peer: that still goes to the owner, or is blocked if the owner set Never.
+  Free text in a new thread goes to the owner.
 - `thread_trust` in each `propose` output and `inbox` item shows it: `active`, `ends_at` and
   `seconds_left`. When `active` is false or the time is up, the next reply waits for the owner.
 - You cannot ask for, extend or end conversation trust; only the owner sets it in the Mini App.
