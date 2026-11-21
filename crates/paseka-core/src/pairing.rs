@@ -1,12 +1,15 @@
-//! Pairing (PROTOCOL §11): invite lifetime and the invitee's check of a pair accept against the
-//! pair URI.
+//! Pairing (PROTOCOL §11): invite lifetime, the invitee's check of a pair accept against the
+//! pair URI, and the verification a peer needs for trust above T1.
 
 use ed25519_dalek::VerifyingKey;
+use paseka_proto::evidence::Channel;
 use paseka_proto::jws::Typ;
 use paseka_proto::pairing::PairAccept;
-use paseka_proto::{Address, KeyId, UnixSecs};
+use paseka_proto::{Address, KeyId, OpenTrust, TenantId, UnixSecs};
 
+use crate::channel::SETTING_LEVEL;
 use crate::hash::sha256;
+use crate::tenant::TenantMap;
 use crate::token::{self, TokenError};
 
 /// Default invite lifetime (PROTOCOL §11 step 1, §14).
@@ -82,13 +85,88 @@ pub fn verify_accept(
     Ok((a, key))
 }
 
+/// Whether the owner compared the short authentication string of the pairing with the peer's
+/// owner (PROTOCOL §11).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Verification {
+    /// The comparison was skipped.
+    NotVerified,
+    /// The owner confirmed that both strings match.
+    Sas,
+}
+
+/// Whether open mandates above T1 need a verified peer: a security setting of the tenant
+/// (PROTOCOL §9.4, §11).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Requirement {
+    /// T2, T3 and conversation trust need a peer verified by the SAS.
+    #[default]
+    On,
+    /// Any trust may be granted to a peer that is not verified.
+    Off,
+}
+
+/// What the verification rule looks at for one peer of one tenant.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VerificationCheck {
+    /// The peer's verification.
+    pub peer: Verification,
+    /// The tenant's [`Requirement`].
+    pub requirement: Requirement,
+}
+
+impl VerificationCheck {
+    /// Whether an open mandate of `trust` may be presented to the owner or signed for this peer.
+    /// Every trust above T1 needs the check, conversation trust included: it releases free text,
+    /// where T1 releases only rendered templates.
+    pub fn allows(self, trust: OpenTrust) -> bool {
+        trust == OpenTrust::T1
+            || self.peer == Verification::Sas
+            || self.requirement == Requirement::Off
+    }
+}
+
+/// A [`Requirement`] change through a channel below the settings floor A2.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SettingTooWeak;
+
+/// Per-tenant [`Requirement`].
+#[derive(Debug, Clone, Default)]
+pub struct RequirementBook {
+    tenants: TenantMap<(), Requirement>,
+}
+
+impl RequirementBook {
+    /// The tenant's requirement; [`Requirement::On`] until the owner changes it.
+    pub fn requirement(&self, tenant: &TenantId) -> Requirement {
+        self.tenants.get(tenant, &()).copied().unwrap_or_default()
+    }
+
+    /// Changes the tenant's requirement through an owner settings decision by `channel`.
+    ///
+    /// # Errors
+    /// [`SettingTooWeak`] for a channel below A2, the open mandate included.
+    pub fn set(
+        &mut self,
+        tenant: &TenantId,
+        requirement: Requirement,
+        channel: Channel,
+    ) -> Result<(), SettingTooWeak> {
+        if !channel.satisfies(SETTING_LEVEL) {
+            return Err(SettingTooWeak);
+        }
+        self.tenants.insert(tenant, (), requirement);
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use ed25519_dalek::SigningKey;
     use serde_json::Value;
 
     use super::*;
-    use crate::testkit::{seed_key, vectors};
+    use crate::testkit::{seed_key, tenant, vectors};
 
     fn party(v: &Value, name: &str) -> (SigningKey, KeyId, Address) {
         let k = &v["signing_keys"][name];
@@ -148,6 +226,25 @@ mod tests {
             verify_accept(accept, &other_request),
             Err(AcceptInvalid::Request)
         );
+    }
+
+    #[test]
+    fn the_verification_requirement_is_on_until_the_owner_turns_it_off_at_a2() {
+        let mut book = RequirementBook::default();
+        let (t, other) = (tenant(1), tenant(2));
+        assert_eq!(book.requirement(&t), Requirement::On);
+        for weak in [Channel::TelegramButton, Channel::OpenMandate] {
+            assert_eq!(book.set(&t, Requirement::Off, weak), Err(SettingTooWeak));
+        }
+        assert_eq!(book.requirement(&t), Requirement::On);
+        let a2 = Channel::TelegramMiniApp;
+        assert_eq!(book.set(&t, Requirement::Off, a2), Ok(()));
+        assert_eq!(
+            (book.requirement(&t), book.requirement(&other)),
+            (Requirement::Off, Requirement::On)
+        );
+        assert_eq!(book.set(&t, Requirement::On, a2), Ok(()));
+        assert_eq!(book.requirement(&t), Requirement::On);
     }
 
     #[test]

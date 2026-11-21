@@ -4,12 +4,15 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use ed25519_dalek::SigningKey;
 use paseka_proto::envelope::{Envelope, Event, ReceiptStatus, WireErrorCode};
+use paseka_proto::evidence::Channel;
 use paseka_proto::jws::{Compact, JwsError, MAX_TOKEN_BYTES, Typ};
 use paseka_proto::{Address, EventId, KeyId, Sha256, TenantId, UnixSecs};
 use serde::Serialize;
 
+use crate::channel::SETTING_LEVEL;
 use crate::hash::sha256;
 use crate::mandate::{JtiBook, MandateInvalid, verify_received};
+use crate::pairing::Verification;
 use crate::peer::{KeyChange, KeyChangeRefused, NoPendingChange, PeerKeys};
 use crate::tenant::TenantMap;
 use crate::token;
@@ -59,10 +62,20 @@ pub enum PeerConflict {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AddressIsPeer;
 
+/// A refused later SAS verification of a peer (PROTOCOL §11).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VerifyRefused {
+    /// The tenant records no such peer.
+    UnknownPeer,
+    /// The channel does not satisfy the pairing consent level A2.
+    ChannelTooWeak,
+}
+
 #[derive(Debug, Clone)]
 struct Peer {
     keys: PeerKeys,
     state: PeerState,
+    verification: Verification,
 }
 
 /// An accepted envelope.
@@ -144,8 +157,9 @@ impl Receiver {
         Ok(())
     }
 
-    /// Records the peer `address` of `tenant` with the key record pairing made, in `state`. An
-    /// address already recorded with the same current key keeps its record and takes `state`.
+    /// Records the peer `address` of `tenant` with the key record pairing made, in `state`, with
+    /// the owner's `verification` of the pairing. An address already recorded with the same
+    /// current key keeps its key record and takes `state` and `verification`.
     ///
     /// # Errors
     /// [`PeerConflict`] for one of this gate's tenants or an address recorded with another key.
@@ -155,6 +169,7 @@ impl Receiver {
         address: Address,
         keys: PeerKeys,
         state: PeerState,
+        verification: Verification,
     ) -> Result<(), PeerConflict> {
         if self.tenants.contains_key(&address) {
             return Err(PeerConflict::OwnTenant);
@@ -164,14 +179,47 @@ impl Receiver {
                 return Err(PeerConflict::OtherKey);
             }
             peer.state = state;
+            peer.verification = verification;
             return Ok(());
         }
         self.peer_addresses
             .entry(address.clone())
             .or_default()
             .insert(tenant.clone());
-        self.peers.insert(tenant, address, Peer { keys, state });
+        let peer = Peer {
+            keys,
+            state,
+            verification,
+        };
+        self.peers.insert(tenant, address, peer);
         Ok(())
+    }
+
+    /// The owner of `tenant` compared the pairing SAS with the peer's owner after pairing and
+    /// confirmed that it matches, deciding through `channel`.
+    ///
+    /// # Errors
+    /// [`VerifyRefused`] for an unknown peer or a channel below A2.
+    pub fn verify_peer(
+        &mut self,
+        tenant: &TenantId,
+        address: &Address,
+        channel: Channel,
+    ) -> Result<(), VerifyRefused> {
+        let peer = self
+            .peers
+            .get_mut(tenant, address)
+            .ok_or(VerifyRefused::UnknownPeer)?;
+        if !channel.satisfies(SETTING_LEVEL) {
+            return Err(VerifyRefused::ChannelTooWeak);
+        }
+        peer.verification = Verification::Sas;
+        Ok(())
+    }
+
+    /// The verification of the peer `address` of `tenant`.
+    pub fn verification(&self, tenant: &TenantId, address: &Address) -> Option<Verification> {
+        self.peers.get(tenant, address).map(|p| p.verification)
     }
 
     /// Makes the pending key change of the peer `address` of `tenant` current, once the owner of
@@ -328,6 +376,7 @@ mod tests {
             env.iss.clone(),
             PeerKeys::paired(alice.verifying_key(), None),
             PeerState::Active,
+            Verification::Sas,
         )
         .unwrap();
         r.add_peer(
@@ -335,6 +384,7 @@ mod tests {
             Address::new("t_01JD0000000000000000000003").unwrap(),
             PeerKeys::paired(carol.verifying_key(), None),
             PeerState::Active,
+            Verification::Sas,
         )
         .unwrap();
         let now = env.iat + 1;
@@ -424,11 +474,23 @@ mod tests {
         let (alice, carol) = (seed_key(&v, "alice"), seed_key(&v, "carol"));
         let paired = |k: &SigningKey| PeerKeys::paired(k.verifying_key(), None);
         assert_eq!(
-            r.add_peer(&tenant(2), address(1), paired(&carol), PeerState::Active),
+            r.add_peer(
+                &tenant(2),
+                address(1),
+                paired(&carol),
+                PeerState::Active,
+                Verification::Sas
+            ),
             Err(PeerConflict::OtherKey)
         );
         assert_eq!(
-            r.add_peer(&tenant(2), address(2), paired(&carol), PeerState::Active),
+            r.add_peer(
+                &tenant(2),
+                address(2),
+                paired(&carol),
+                PeerState::Active,
+                Verification::Sas
+            ),
             Err(PeerConflict::OwnTenant)
         );
         assert_eq!(r.peer_keys(&tenant(2), &address(1)), Some(&paired(&alice)));
@@ -437,9 +499,45 @@ mod tests {
             address(1),
             paired(&alice),
             PeerState::PendingOwner,
+            Verification::NotVerified,
         )
         .unwrap();
         assert_eq!(r.accept(&jws, now), Err(WireErrorCode::PairingPending));
+    }
+
+    #[test]
+    fn a_peer_not_verified_exchanges_messages_and_the_owner_verifies_it_later_at_a2() {
+        let v = vectors();
+        let (mut r, jws, env, now) = setup();
+        let alice = PeerKeys::paired(seed_key(&v, "alice").verifying_key(), None);
+        let (bob, peer) = (tenant(2), env.iss);
+        r.add_peer(
+            &bob,
+            peer.clone(),
+            alice,
+            PeerState::Active,
+            Verification::NotVerified,
+        )
+        .unwrap();
+        assert_eq!(r.verification(&bob, &peer), Some(Verification::NotVerified));
+        assert_eq!(
+            r.accept(&jws, now).map(|a| a.status),
+            Ok(ReceiptStatus::Accepted)
+        );
+        for weak in [Channel::TelegramButton, Channel::OpenMandate] {
+            assert_eq!(
+                r.verify_peer(&bob, &peer, weak),
+                Err(VerifyRefused::ChannelTooWeak)
+            );
+        }
+        assert_eq!(
+            r.verify_peer(&tenant(1), &peer, Channel::TelegramMiniApp),
+            Err(VerifyRefused::UnknownPeer)
+        );
+        assert_eq!(r.verification(&bob, &peer), Some(Verification::NotVerified));
+        assert_eq!(r.verify_peer(&bob, &peer, Channel::TelegramMiniApp), Ok(()));
+        assert_eq!(r.verification(&bob, &peer), Some(Verification::Sas));
+        assert_eq!(r.verification(&tenant(1), &peer), None);
     }
 
     #[test]
@@ -456,8 +554,14 @@ mod tests {
         let mut r = Receiver::default();
         r.add_tenant(tenant(2)).unwrap();
         let keys = PeerKeys::paired(alice.verifying_key(), accept.next_key_sha256);
-        r.add_peer(&tenant(2), accept.iss.clone(), keys, PeerState::Active)
-            .unwrap();
+        r.add_peer(
+            &tenant(2),
+            accept.iss.clone(),
+            keys,
+            PeerState::Active,
+            Verification::Sas,
+        )
+        .unwrap();
         let got = r.accept(&jws, rotate.iat + 1).unwrap();
         assert_eq!(got.key_change, Some(KeyChange::Installed));
         let keys = r.peer_keys(&tenant(2), &accept.iss).unwrap();
@@ -482,8 +586,14 @@ mod tests {
         let mut r = Receiver::default();
         r.add_tenant(tenant(2)).unwrap();
         let keys = PeerKeys::paired(alice.verifying_key(), accept.next_key_sha256);
-        r.add_peer(&tenant(2), accept.iss.clone(), keys, PeerState::Active)
-            .unwrap();
+        r.add_peer(
+            &tenant(2),
+            accept.iss.clone(),
+            keys,
+            PeerState::Active,
+            Verification::Sas,
+        )
+        .unwrap();
         let got = r.accept(&jws, revoke.iat + 1).unwrap();
         assert_eq!(got.key_change, Some(KeyChange::Installed));
         let keys = r.peer_keys(&tenant(2), &accept.iss).unwrap();
@@ -499,8 +609,14 @@ mod tests {
             key(1).verifying_key(),
             Some(key_sha256(&key(2).verifying_key())),
         );
-        r.add_peer(&tenant(2), address(1), keys, PeerState::Active)
-            .unwrap();
+        r.add_peer(
+            &tenant(2),
+            address(1),
+            keys,
+            PeerState::Active,
+            Verification::Sas,
+        )
+        .unwrap();
         r
     }
 

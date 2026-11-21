@@ -720,6 +720,9 @@ The receiver shows the sender's level and channel with the inbox item.
 | T3 (later) | `trust: T3`, `topics`, `rate`, short `exp` | free text on allowed topics |
 | conversation | `trust: conversation`, `thread`, short `exp` | free text in one thread |
 
+Above T1, that is T2, T3 and conversation trust, a peer whose pairing SAS comparison was skipped
+needs verification first while the owner requires it (§11).
+
 An open mandate matches a revision when: it is active (`nbf <= now < exp`, not revoked, tenant
 not in tripwire mode); `to` is the revision's recipient; the revision's kind is allowed by the
 trust; every constraint holds; and the counters allow one more message. T3 hard blocks always
@@ -751,8 +754,8 @@ The agent influences only the choice of doc, section and the note.
 ### 9.4 Security settings
 
 Approvers, peers, trust levels, open mandates, shelves, templates, dictionary, canaries, the
-source registry (§6.4), default floors, windows and the tripwire mode (§4.3) are security
-settings. After the first-run
+source registry (§6.4), default floors, windows, the tripwire mode (§4.3) and the verification
+requirement for trust above T1 (§11) are security settings. After the first-run
 ceremony they change only through an owner decision in the Mini App at A2 or higher, journaled
 with evidence. The bootstrap config is read only before the ceremony; later differences are
 reported to the owner and ignored (CA-23). The PIN and its kind change only as §7.5 states:
@@ -962,8 +965,9 @@ sent through the gates proves nothing, because a holder of the old key can send 
 ## 11. Pairing
 
 Pairing exchanges tenant addresses, keys and endpoints between an inviter (alice) and an invitee
-(bob). Each side pins the other's key for the other's address; each owner consents on their side. The agent has no part
-in pairing.
+(bob). Each side pins the other's key for the other's address; each owner consents on their side
+at A2. The short authentication string (SAS) comparison is offered to each owner by default and
+skipped with one tap. The agent has no part in pairing.
 
 1. Invite. Alice creates an invite in her Mini App. Her gate stores
    `{tenant, code, expires_at, used: false}`, with `expires_at` from the invite lifetime of §14,
@@ -987,22 +991,52 @@ in pairing.
    (`conflict`); a recorded key changes only by rotation, revocation or owner-confirmed change
    (§10.6 to §10.8). Likewise a gate never registers a tenant whose address one of its tenants
    records as a peer. It stores bob's `key` and
-   `next_key_sha256` for bob's address as a peer in state `pending_owner` and answers `200` with
-   a JWS signed by alice's key: `{v, type: "pair.accept", id, iss: alice address, aud: bob
-   address, key: alice key id, request_id, request_sha256, endpoint: alice endpoint, iat,
-   next_key_sha256?}`, with alice's first commitment.
+   `next_key_sha256` for bob's address as a peer in state `pending_owner`, not verified, and
+   answers `200` with a JWS signed by alice's key: `{v, type: "pair.accept", id, iss: alice
+   address, aud: bob address, key: alice key id, request_id, request_sha256, endpoint: alice
+   endpoint, iat, next_key_sha256?}`, with alice's first commitment.
 5. Bob's gate verifies the accept: `kid` names `k` from the URI and the signature verifies with
    it, `key` equals `k` and `iss` equals `a` (CA-37), `aud` is bob's address, `request_sha256` is
    SHA-256 of the request JWS bytes. It stores key `k` and the accept's `next_key_sha256` for
-   address `a` as an active T0 peer, refusing `a` as in step 4.
-6. Alice's owner sees in the Mini App: bob's key fingerprint, endpoint host, name hint (marked as
-   claimed by the peer), the Telegram user U who opened the invite, and the short authentication
-   string. Alice consents at A2; the peer becomes active at T0. Alice's gate then sends bob an
-   envelope `pair.confirmed`. Until then messages from bob get `pairing_pending` (CA-36).
+   address `a` as an active T0 peer, not verified, refusing `a` as in step 4.
+6. Bob's comparison. Bob's Mini App, on the page where he consented, shows the SAS with three
+   choices: "Codes match", which marks alice verified; "Skip", one tap, which leaves her not
+   verified; "Codes differ", which removes the peer as unpairing does.
+7. Alice's consent. Alice's owner sees in the Mini App: bob's key fingerprint, endpoint host, name
+   hint (marked as claimed by the peer), the Telegram user U who opened the invite, and the SAS
+   with the same offer: "Codes match, pair", which pairs at A2 with bob verified; "Pair without
+   comparing", one tap, which pairs at A2 with bob not verified; "Refuse", which drops the pending
+   peer. On consent the peer becomes active at T0 and alice's gate sends bob an envelope
+   `pair.confirmed`. Until then messages from bob get `pairing_pending` (CA-36).
 
-Short authentication string, shown to both owners for optional comparison: the first 4 bytes of
-`SHA-256(frame("paseka/sas/v1") || frame(alice key id) || frame(bob key id) || frame(code))` as
-an unsigned integer modulo 1000000, as six digits.
+The owners compare by reading the six digits to each other over a channel where they recognise
+each other, such as a call or in person. Equal strings mean that both gates pinned the keys and
+addresses their owners meant; different strings mean that a key or address was substituted, so
+the owner who sees them differ does not pair, and the owners start again with a new invite.
+
+Short authentication string: the first 4 bytes of
+`SHA-256(frame("paseka/sas/v2") || frame(alice address) || frame(alice key id) || frame(bob
+address) || frame(bob key id) || frame(code))` as an unsigned integer modulo 1000000, as six
+digits (`paseka_core::hash::sas`; vector `sas` in `contracts/fixtures/vectors/digests.json`).
+Alice is always the inviter, so both gates compute the same string. Each gate keeps the string
+with the peer record.
+
+Verification. Each gate records for each peer whether its own owner confirmed the SAS (verified)
+or skipped the comparison (not verified); the two sides decide independently. An owner who skipped
+compares later from the peer's page in the Mini App, which shows the kept string; "Codes match"
+there is a decision at A2 that marks the peer verified (`paseka_core::envelope::Receiver::verify_peer`).
+The agent cannot verify a peer; `PeerView.verified` reports the state to it.
+
+Trust above T1 needs verification. While the tenant's verification requirement is on, the
+default, the gate neither presents to the owner nor activates an open mandate of trust T2, T3 or
+`conversation` for a peer that is not verified (`paseka_core::open::OpenBook::present` and
+`activate`, `paseka_core::pairing::VerificationCheck`); the Mini App offers the comparison
+instead. Conversation trust counts as above T1: it releases free text the owner has not read, and
+T1 releases only rendered templates the owner wrote, so a key substituted at pairing would receive
+far more under it. T0 and T1 never need verification. The requirement is a security setting
+(§9.4, `paseka_core::pairing::Requirement`): the owner turns it off or on only on the settings
+page at A2 or higher. Turning it on does not end open mandates already active; the owner revokes
+them (§8.3).
 
 The endpoint in the pair URI and in pairing messages MUST be `https`. Unpairing: either owner
 removes the peer through consent; the gate sends `unpair` and stops accepting the peer's

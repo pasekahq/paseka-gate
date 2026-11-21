@@ -167,6 +167,15 @@ Descriptions only; no shape changes.
 - `mandate/open`: `constraints.private_sources` gains a description: it only narrows the source
   registry (PROTOCOL §8.3).
 
+### Version 1: pairing verification
+
+Additive (ADR 0010, ADR 0020), except the last item, made in place before any release.
+
+- `agent/views`: `PeerView` gains the optional `verified`, whether the owner confirmed the pairing
+  short authentication string (PROTOCOL §11).
+- `fixtures/vectors/digests.json`: the `sas` vector input gains `inviter` and `invitee`
+  addresses, and its value is regenerated under the domain string `paseka/sas/v2`.
+
 ## Tolerant readers
 
 Wire payloads, receipts, mandates, evidence and agent tool outputs:

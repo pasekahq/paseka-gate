@@ -10,6 +10,7 @@ use paseka_core::draft::{
 use paseka_core::envelope::{PeerState, Receiver, seal};
 use paseka_core::hash::{Release, content_sha256, release_digest, sha256};
 use paseka_core::mandate::{self, CLOSED_TTL_SECS};
+use paseka_core::pairing::Verification;
 use paseka_core::peer::{Grace, PeerKeys, key_revoke_data, key_rotate_data, key_sha256};
 use paseka_core::risk::Required;
 use paseka_core::token::key_id;
@@ -167,8 +168,14 @@ impl Wire {
             alice.verifying_key(),
             Some(key_sha256(&key(ALICE_NEXT).verifying_key())),
         );
-        recv.add_peer(&tenant(2), address(1), keys, PeerState::Active)
-            .expect("bob records alice");
+        recv.add_peer(
+            &tenant(2),
+            address(1),
+            keys,
+            PeerState::Active,
+            Verification::Sas,
+        )
+        .expect("bob records alice");
         Self { recv, alice }
     }
 }

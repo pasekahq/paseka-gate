@@ -1,0 +1,31 @@
+{
+  "peers": [
+    {
+      "peer": "carol",
+      "name": "Carol",
+      "trust": "T1",
+      "verified": "no",
+      "shelves": [],
+      "templates": [
+        {
+          "id": "availability",
+          "description": "Free slots on a day",
+          "fields": {
+            "day": {
+              "type": "enum",
+              "values": [
+                "monday",
+                "tuesday"
+              ]
+            },
+            "slots": {
+              "type": "int",
+              "min": 0,
+              "max": 8
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -670,6 +670,10 @@ pub struct PeerView {
     /// it covers is reported only by [`ThreadTrust`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub conversation_until: Option<UnixSecs>,
+    /// Whether the owner compared the pairing short authentication string with the peer's owner
+    /// (PROTOCOL §11); `false` means trust above T1 may need that comparison first.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verified: Option<bool>,
     /// Shelves open to this peer.
     pub shelves: Vec<ShelfView>,
     /// Templates allowed for this peer.

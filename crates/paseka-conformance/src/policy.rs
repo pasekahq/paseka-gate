@@ -1,9 +1,13 @@
-//! Attacks on the agent surface, risk evaluation, open mandates, shelves, tripwire mode and the
-//! source registry (SP-1, SP-7 to SP-11, SP-17, SP-23, SP-24).
+//! Attacks on the agent surface, risk evaluation, open mandates, shelves, tripwire mode, the
+//! source registry and trust for peers not verified at pairing (SP-1, SP-7 to SP-11, SP-15,
+//! SP-17, SP-23, SP-24).
 
 use std::collections::BTreeSet;
 
+use paseka_core::envelope::{PeerState, Receiver, VerifyRefused};
 use paseka_core::open::{Candidate, OpenBook, OpenDenied, SlotError, thread_trust};
+use paseka_core::pairing::{Requirement, RequirementBook, Verification, VerificationCheck};
+use paseka_core::peer::PeerKeys;
 use paseka_core::risk::{self, CanaryId, OutputKind, OwnerRules, Required};
 use paseka_core::shelf::{ShareError, Shelf, check_share};
 use paseka_core::source::{
@@ -22,7 +26,7 @@ use paseka_proto::tools::{FieldSpec, FieldType, FieldValue, ShareInput, TOOL_NAM
 use paseka_proto::{Address, DocId, Level, OpenTrust, Sha256, ShelfId, TemplateId, TenantId, V1};
 
 use crate::world::{
-    BODY, NOW, TTL, address, approve, draft, jti, mvp_channels, revision, seed, tenant, thread,
+    BODY, NOW, TTL, address, approve, draft, jti, key, mvp_channels, revision, seed, tenant, thread,
 };
 use crate::{Outcome, all, expect};
 
@@ -227,10 +231,16 @@ fn open_t1(i: u8, max_messages: u32) -> OpenMandate {
     }
 }
 
+/// A peer verified by the SAS, for attacks on other rules of open mandates.
+const VERIFIED: VerificationCheck = VerificationCheck {
+    peer: Verification::Sas,
+    requirement: Requirement::On,
+};
+
 fn active(m: &OpenMandate) -> OpenBook {
     let mut b = OpenBook::default();
-    b.present(m, NOW).expect("first presentation");
-    b.activate(m).expect("pending");
+    b.present(m, VERIFIED, NOW).expect("first presentation");
+    b.activate(m, VERIFIED).expect("pending");
     b
 }
 
@@ -308,10 +318,10 @@ pub(crate) fn ca27_revoked_mandate() -> Outcome {
 
 pub(crate) fn ca28_second_open_mandate() -> Outcome {
     let mut book = OpenBook::default();
-    if book.present(&open_t1(1, 10), NOW).is_err() {
+    if book.present(&open_t1(1, 10), VERIFIED, NOW).is_err() {
         return Outcome::Fail("setup: first presentation refused".into());
     }
-    expect(book.present(&open_t1(2, 10), NOW + 1), |e| {
+    expect(book.present(&open_t1(2, 10), VERIFIED, NOW + 1), |e| {
         *e == SlotError::PreviousPending
     })
 }
@@ -691,5 +701,127 @@ pub(crate) fn ca55_conversation_mandate_beyond_allow() -> Outcome {
         out.push(ca55_leaves(&w, &m, API_KEY, DraftState::AwaitingConsent));
         out.push(ca55_leaves(&w, &m, LEAK, DraftState::Blocked));
     }
+    all(out)
+}
+
+/// Alice's gate after pairing with bob, whose SAS comparison alice skipped.
+struct Unverified {
+    alice: TenantId,
+    bob: Address,
+    recv: Receiver,
+    settings: RequirementBook,
+}
+
+impl Unverified {
+    fn new() -> Result<Self, Outcome> {
+        let (alice, bob) = (tenant(1), address(2));
+        let mut recv = Receiver::default();
+        recv.add_tenant(alice.clone())
+            .map_err(|e| Outcome::Fail(format!("setup: tenant refused: {e:?}")))?;
+        let keys = PeerKeys::paired(key(2).verifying_key(), None);
+        recv.add_peer(
+            &alice,
+            bob.clone(),
+            keys,
+            PeerState::Active,
+            Verification::NotVerified,
+        )
+        .map_err(|e| Outcome::Fail(format!("setup: peer refused: {e:?}")))?;
+        Ok(Self {
+            alice,
+            bob,
+            recv,
+            settings: RequirementBook::default(),
+        })
+    }
+
+    fn check(&self) -> Result<VerificationCheck, Outcome> {
+        let peer = self
+            .recv
+            .verification(&self.alice, &self.bob)
+            .ok_or_else(|| Outcome::Fail("setup: bob is not recorded".into()))?;
+        Ok(VerificationCheck {
+            peer,
+            requirement: self.settings.requirement(&self.alice),
+        })
+    }
+
+    /// Alice changes the requirement on the settings page through `telegram-miniapp`.
+    fn set(&mut self, r: Requirement) -> Result<(), Outcome> {
+        self.settings
+            .set(&self.alice, r, Channel::TelegramMiniApp)
+            .map_err(|e| Outcome::Fail(format!("setup: {r:?} refused at A2: {e:?}")))
+    }
+
+    /// Presents and signs `m` for bob as the gate would; `Ok` when it becomes active.
+    fn grant(&self, m: &OpenMandate) -> Result<(), Outcome> {
+        let check = self.check()?;
+        let mut book = OpenBook::default();
+        book.present(m, check, NOW)
+            .and_then(|()| book.activate(m, check))
+            .map_err(|e| Outcome::Fail(format!("{:?} refused: {e:?}", m.trust)))
+    }
+}
+
+fn above_t1() -> [OpenMandate; 3] {
+    let t = |trust| OpenMandate {
+        trust,
+        ..open_t1(1, 10)
+    };
+    [t(OpenTrust::T2), t(OpenTrust::T3), conversation(1)]
+}
+
+/// Each mandate above T1 for the unverified bob is refused at presentation, and at signing when
+/// alice turned the requirement off for the presentation and back on before signing.
+fn ca56_refused(w: &mut Unverified) -> Vec<Outcome> {
+    let refused = |e: &SlotError| *e == SlotError::PeerNotVerified;
+    let mut out = Vec::new();
+    for m in above_t1() {
+        let mut book = OpenBook::default();
+        let steps = w.check().and_then(|check| {
+            out.push(expect(book.present(&m, check, NOW), refused));
+            w.set(Requirement::Off)?;
+            book.present(&m, w.check()?, NOW).map_err(|e| {
+                Outcome::Fail(format!("setup: presented with the requirement off: {e:?}"))
+            })?;
+            w.set(Requirement::On)?;
+            out.push(expect(book.activate(&m, w.check()?), refused));
+            Ok(())
+        });
+        if let Err(o) = steps {
+            out.push(o);
+        }
+    }
+    out
+}
+
+pub(crate) fn ca56_unverified_peer_above_t1() -> Outcome {
+    let mut w = match Unverified::new() {
+        Ok(w) => w,
+        Err(o) => return o,
+    };
+    let mut out = ca56_refused(&mut w);
+    for weak in [Channel::TelegramButton, Channel::OpenMandate] {
+        out.push(expect(
+            w.settings.set(&w.alice, Requirement::Off, weak),
+            |_| true,
+        ));
+        out.push(expect(w.recv.verify_peer(&w.alice, &w.bob, weak), |e| {
+            *e == VerifyRefused::ChannelTooWeak
+        }));
+    }
+    out.extend(
+        TOOL_NAMES
+            .into_iter()
+            .filter(|n| n.contains("verif") || n.contains("sas") || n.contains("pair"))
+            .map(|n| Outcome::Fail(format!("agent tool {n} reaches peer verification"))),
+    );
+    out.extend(ca56_refused(&mut w));
+    out.push(w.grant(&open_t1(1, 10)).err().unwrap_or(Outcome::Pass));
+    let a2 = Channel::TelegramMiniApp;
+    if let Err(e) = w.recv.verify_peer(&w.alice, &w.bob, a2) {
+        out.push(Outcome::Fail(format!("verification at A2 refused: {e:?}")));
+    }
+    out.extend(above_t1().map(|m| w.grant(&m).err().unwrap_or(Outcome::Pass)));
     all(out)
 }

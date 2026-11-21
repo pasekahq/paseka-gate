@@ -5,7 +5,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use ed25519_dalek::SigningKey;
 use paseka_core::envelope::{MAX_AGE_SECS, PeerConflict, PeerState};
 use paseka_core::mandate;
-use paseka_core::pairing::{AcceptInvalid, Expected, verify_accept};
+use paseka_core::pairing::{AcceptInvalid, Expected, Verification, verify_accept};
 use paseka_core::peer::{KeyChange, NoPendingChange, PeerKeys};
 use paseka_core::token;
 use paseka_proto::envelope::{ReceiptStatus, WireErrorCode};
@@ -48,6 +48,7 @@ pub(crate) fn ca31_forged_envelopes() -> Outcome {
         address(3),
         PeerKeys::paired(carol.verifying_key(), None),
         PeerState::Active,
+        Verification::Sas,
     ) {
         return Outcome::Fail(format!("setup: carol not recorded: {e:?}"));
     }
@@ -189,10 +190,13 @@ pub(crate) fn ca34_mandate_mismatch() -> Outcome {
 pub(crate) fn ca36_pairing_pending() -> Outcome {
     let mut w = Wire::new();
     let keys = PeerKeys::paired(w.alice.verifying_key(), None);
-    if let Err(e) = w
-        .recv
-        .add_peer(&tenant(2), address(1), keys, PeerState::PendingOwner)
-    {
+    if let Err(e) = w.recv.add_peer(
+        &tenant(2),
+        address(1),
+        keys,
+        PeerState::PendingOwner,
+        Verification::NotVerified,
+    ) {
         return Outcome::Fail(format!("setup: {e:?}"));
     }
     let jws = sealed(&w.alice, &message(BODY, vec![], 1, |_| {}));
@@ -306,12 +310,14 @@ pub(crate) fn ca48_key_substitution() -> Outcome {
         address(1),
         PeerKeys::paired(attacker.verifying_key(), None),
         PeerState::Active,
+        Verification::Sas,
     );
     let own_address = w.recv.add_peer(
         &tenant(2),
         address(2),
         PeerKeys::paired(attacker.verifying_key(), None),
         PeerState::Active,
+        Verification::Sas,
     );
     let by_attacker = sealed(&attacker, &message(BODY, vec![], 1, |_| {}));
     let unchanged = if alice_current_key(&w) == original {

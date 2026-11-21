@@ -216,12 +216,21 @@ signature by the sender key, recipient, content hash, attachments, release diges
 
 SP-15 Pairing integrity. A peer becomes active only after a single-use, unexpired invite code is
 redeemed and the owner of each side consents; each side pins the other's key for the other's
-address from the exchange.
+address from the exchange. A peer whose owner skipped the SAS comparison is not verified; while
+the tenant requires verification, the default, no open mandate above T1 (T2, T3, conversation
+trust) is presented or activated for it. Only the owner, at A2 or higher, verifies a peer or turns
+the requirement off.
 - CA-35 Redeem a used or expired code. Result: rejected.
 - CA-36 Send messages from a requester whose pairing the inviter's owner has not confirmed.
-  Result: `not_paired`.
+  Result: `pairing_pending`.
 - CA-37 Answer a pair request with an accept signed by a key other than the one in the pair URI,
   or naming another address than the URI. Result: the requester rejects it.
+- CA-56 Alice skipped the SAS comparison with bob and keeps the default requirement. Present a T2,
+  a T3 and a conversation mandate for bob; present one while the requirement is off and sign it
+  after it is back on; turn the requirement off or mark bob verified through `telegram-button` or
+  as an open mandate; reach either through an agent tool. Result: every presentation and
+  signature is refused, both changes are refused, no such tool exists; a T1 mandate is granted, and
+  after alice verifies bob through `telegram-miniapp` the three are granted.
 
 SP-16 Tenant isolation. No operation of one tenant reads, changes or decides anything of another.
 - CA-38 Use tenant A's agent token with tenant B's message, draft and doc ids. Result:

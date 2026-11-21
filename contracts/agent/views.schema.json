@@ -348,6 +348,10 @@
           "$ref": "../common.schema.json#/$defs/unix_time",
           "description": "`exp` of the one active conversation mandate with this peer, present exactly when it is active as PROTOCOL §4.4 defines for `thread_trust`. It does not name the thread; `thread_trust` of a draft or inbox item does."
         },
+        "verified": {
+          "type": "boolean",
+          "description": "Whether the owner compared the pairing short authentication string with this peer's owner (PROTOCOL §11). `false`: the comparison was skipped, and while the owner requires verification no trust above T1 is granted to this peer before it."
+        },
         "shelves": {
           "type": "array",
           "items": {
