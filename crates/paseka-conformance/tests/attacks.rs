@@ -10,8 +10,8 @@ fn check(id: &str) {
 }
 
 #[test]
-fn attacks_are_numbered_ca_1_to_56_in_order() {
-    assert_eq!(ATTACKS.len(), 56);
+fn attacks_are_numbered_ca_1_to_57_in_order() {
+    assert_eq!(ATTACKS.len(), 57);
     for (i, a) in ATTACKS.iter().enumerate() {
         assert_eq!(a.id, format!("CA-{}", i + 1));
     }
@@ -309,4 +309,9 @@ fn ca55_conversation_mandate_beyond_allow() {
 #[test]
 fn ca56_unverified_peer_above_t1() {
     check("CA-56");
+}
+
+#[test]
+fn ca57_one_time_code_and_vault_secret() {
+    check("CA-57");
 }

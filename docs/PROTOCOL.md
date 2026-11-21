@@ -62,6 +62,14 @@ exported through any interface.
 - An attachment is `{name, media_type, size, sha256}` plus its bytes. `name` is 1 to 128
   characters without `/`, `\`, control characters or U+0000. At most 8 attachments, each at most
   2 MiB, together at most 4 MiB. Attachment order is significant.
+- Image metadata is removed when an attachment is added, by `propose`, `revise` or the gate's
+  own `share`, before anything else reads it. For `image/jpeg` the gate drops the APP1 (Exif,
+  XMP), APP13 (IPTC) and COM segments; for `image/png` the `eXIf`, `tEXt`, `iTXt`, `zTXt` and
+  `tIME` chunks; for `image/webp` the `EXIF` and `XMP ` chunks. Pixel data and colour profiles
+  are kept and nothing is re-encoded, so the Exif orientation is lost. The stripped bytes are
+  the attachment: `size` and `sha256` are computed over them, and they are what evaluation
+  reads, the owner sees and the peer receives. The bytes the agent supplied are not kept. Other
+  media types are attached as given.
 - `content_sha256 = SHA-256(body bytes)`. `attachments[i].sha256 = SHA-256(attachment bytes)`.
 
 ### 3.2 Release digest
@@ -335,7 +343,7 @@ releases free text. The agent cannot read or edit any input of evaluation except
 | S1 base | exact | free text to a peer: A1; template or shelf share: none |
 | S2 structure: URLs, e-mail addresses, base64 runs of 24+ or hex runs of 32+ characters, digit runs of 9+, length above the A1 prompt capacity, attachments, first message to this peer | exact | A2 |
 | S3 display safety: bidi controls, zero-width and other invisible or control characters except tab and newline, mixed-script look-alikes | exact | A2 |
-| S4 secrets (gitleaks-style rules), source `secrets` (§6.4) | exact | by registry: A2 under Ask |
+| S4 secrets: gitleaks-style rules (source `secrets`), one-time codes (source `one-time codes`), private links (source `private links`) and named vault secrets by exact value in body or attachment text (their registered source) (§6.4) | exact | by registry: A2 under Ask; one-time codes block |
 | S5 personal identifiers (cards with Luhn, IBAN with mod 97, phones, addresses, ids), source `personal identifiers` (§6.4) | exact | by registry: A2 under Ask |
 | S5 dictionary: personal lists, topics | exact | A2 |
 | S6 per-peer policy: topic denied for this peer | exact | A2 |
@@ -401,23 +409,49 @@ its detector exists in this version, comes before the MVP release, or after it:
 | Files and folders | registered `Files` | S8 fingerprints of their documents | this version |
 | Agent memory, skills, instruction files (`CLAUDE.md`, `AGENTS.md`), system prompt | registered `AgentContext`, offered by default when the owner connects an agent | S8 fingerprints | this version |
 | Secrets | built-in `Secrets` | S4 gitleaks-style rules | this version |
-| Named secrets from a vault | | exact value match | MVP |
-| Private links (documents shared by link, signed object URLs, invites, magic links) | | link domains and query tokens | MVP |
+| Named secrets from a vault | registered `VaultSecret`, one per value | S4 exact value match | this version |
+| Private links (documents shared by link, signed object URLs, invites, magic links) | built-in `PrivateLinks` | S4 link domains and query tokens | this version |
 | MCP sources (mail, calendar, contacts) | registered `Mcp` | S9 reads; verified through the gate's MCP proxy | this version, agent-declared reads only; the proxy after the MVP |
 | Messages from one peer | registered `PeerInbound`, one per peer | S8 fingerprints of the bodies that peer sent | this version |
-| Other chats and groups | | content of group X is a source for every peer outside X | MVP |
+| Other chats and groups | registered `Chat`, one per chat with its member peers | S8 fingerprints of its messages | this version |
 | Memory about third parties | registered `ThirdParties` | S8 fingerprints of the entries the owner tags | this version |
 | Personal identifiers (card with Luhn, IBAN, phone, address, coordinates) | built-in `PersonalIds` | S5 validators | this version for cards and IBANs |
-| One-time codes, 2FA, OTP | built-in `OneTimeCodes` | a code detector; the decision is always Never | MVP |
-| Images | | EXIF removed when attached; text in images by OCR | EXIF in the MVP, OCR after it |
+| One-time codes, 2FA, OTP | built-in `OneTimeCodes` | S4 code detector; the decision is always Never | this version |
+| Images | | metadata removed when attached (§3.1); text in images by OCR | metadata removal with attachment handling in the MVP, OCR after it |
 
 Fingerprints are exact shingle sets. MinHash, OCR and an LLM paraphrase check come after the MVP
 as further detectors of the same registry.
 
+Detectors (`paseka_core::risk`):
+
+- One-time codes: a code of 4 to 8 digits that is not a year from 1900 to 2099, or two groups of
+  3 or 4 digits joined by one space or hyphen, within four words of a code keyword, and every
+  `otpauth:` URI. Keywords: `code`, `codes`, `otp`, `2fa`, `mfa`, `totp`, `passcode`,
+  `verification`, `verify`, `one-time`, the Russian forms of `код`, `отп`, `2фа`, and words
+  starting with `подтвержд`, `верификац` or `одноразов`. A keyword next to a qualifier that names
+  a code granting nothing (`zip`, `postal`, `post`, `area`, `country`, `error`, `exit`,
+  `status`, `source`, `promo`, `discount`, `coupon`, `почтовый`, `ошибки`, `региона`, `страны`,
+  `города`) does not count. A digit group next to another digit group is part of a longer
+  number, not a code.
+- Named vault secrets: the owner registers a source of kind `VaultSecret` and its value, at least
+  8 characters. An exact, case-sensitive occurrence of the value in the body or in the text of
+  an attachment is a hit. Flags, notices and the journal name the source, never the value.
+- Private links: a link whose host is a listed domain or a subdomain of it, under the listed
+  path prefix if any, or whose query or fragment has a non-empty parameter named `sig`,
+  `signature`, `token`, `auth`, `key`, `api_key`, `apikey`, `secret`, `password`, `pwd`, `code`,
+  `otp`, `invite`, `magic`, `x-amz-credential`, `x-goog-credential`, `googleaccessid`, or ending
+  in `token` or `signature`. Default entries: `docs.google.com`, `drive.google.com`,
+  `dropbox.com`, `1drv.ms`, `onedrive.live.com`, `sharepoint.com`, `box.com`,
+  `icloud.com/share`, `wetransfer.com`, `we.tl`, `t.me/+`, `t.me/joinchat`,
+  `chat.whatsapp.com`, `discord.gg`, `discord.com/invite`, `join.slack.com`, `zoom.us/j`. The
+  owner adds entries in the settings. The S2 link flag applies as well.
+
 Decisions. The registry holds one decision per tenant, source and peer address
-(`paseka_core::source::SourceRegistry`): Allow, Ask or Never. A source without a decision is Ask
-towards every peer. One-time codes are Never towards every peer and no decision changes them. A
-decision towards one peer never applies to another peer.
+(`paseka_core::source::SourceRegistry`): Allow, Ask or Never. A source without a decision has
+its kind's default: a `Chat` is Allow towards its member peers, a peer's `PeerInbound` is Allow
+towards that peer (a quote going back to its author), and every other source is Ask towards
+every peer. An owner decision replaces the default. One-time codes are Never towards every peer
+and no decision changes them. A decision towards one peer never applies to another peer.
 
 Evaluation (`paseka_core::risk::assess` with `paseka_core::source::Decisions`, the tenant's
 decisions towards the recipient):
@@ -436,8 +470,8 @@ Every other stage applies unchanged whatever the registry says. A read is verifi
 the gate's MCP log and unverified when the agent declared it in `sources` (§5.2); both count.
 
 Changes. Registered sources and decisions are security settings (§9.4): only an owner decision
-in the Mini App at A2 or higher changes them. Registering adds a source at Ask and never replaces
-a registered one. Allow and Ask are decided on the settings page or from an approval prompt. A
+in the Mini App at A2 or higher changes them. Registering adds a source at its kind's default and
+never replaces a registered one. Allow and Ask are decided on the settings page or from an approval prompt. A
 change that sets or lifts Never is accepted only from the settings page: never from an approval
 prompt, an open mandate, or anything the agent reaches (CA-54). The agent interface has no
 operation on the registry (SP-1).

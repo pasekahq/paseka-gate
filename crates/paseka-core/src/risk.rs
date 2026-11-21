@@ -6,6 +6,8 @@
 //! S5, S8 and S9 report the source they matched, and the source registry's decision towards the
 //! recipient sets their floor.
 
+mod sources;
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use base64::Engine as _;
@@ -13,6 +15,8 @@ use base64::engine::general_purpose::{STANDARD_NO_PAD, URL_SAFE_NO_PAD};
 use paseka_proto::Level;
 
 use crate::source::{Access, BuiltIn, Decisions, Source, SourceId};
+
+pub use sources::{DEFAULT_PRIVATE_LINK_DOMAINS, MIN_VAULT_SECRET_CHARS, VaultSecretTooShort};
 
 /// Default maximum text length in bytes before a [`FlagKind::TooLong`] flag.
 pub const DEFAULT_MAX_LEN: usize = 4000;
@@ -39,6 +43,12 @@ pub enum FlagKind {
     Iban,
     /// API key, token or private key.
     Secret,
+    /// One-time code, 2FA or OTP secret.
+    OneTimeCode,
+    /// The exact value of a named vault secret.
+    VaultSecret,
+    /// Link that grants access to whoever holds it.
+    PrivateLink,
     /// Invisible, bidirectional or control character.
     InvisibleChar,
     /// Text longer than the A1 prompt capacity.
@@ -156,6 +166,10 @@ pub struct OwnerRules {
     canaries: Vec<(CanaryId, String)>,
     /// Shingle sets of registered sources' documents.
     fingerprints: Vec<(SourceId, BTreeSet<u64>)>,
+    /// Named vault secrets.
+    vault: Vec<sources::VaultSecret>,
+    /// Private link entries added to [`DEFAULT_PRIVATE_LINK_DOMAINS`].
+    private_link_domains: Vec<String>,
     /// Maximum length before a flag; [`DEFAULT_MAX_LEN`] when zero.
     pub max_len: usize,
 }
@@ -209,6 +223,8 @@ pub struct Draft<'a> {
     pub kind: OutputKind,
     /// Number of attachments.
     pub attachments: usize,
+    /// Text of the attachments, searched for vault secrets.
+    pub attachment_text: &'a [&'a str],
     /// Whether the recipient never received anything before.
     pub new_recipient: bool,
     /// Sources read during the turn.
@@ -236,7 +252,10 @@ pub fn assess(rules: &OwnerRules, d: &Draft<'_>) -> Assessment {
         allowed: Vec::new(),
         canaries: canary_hits(rules, d.text),
     };
-    for f in structural(d.text) {
+    for f in structural(d.text)
+        .into_iter()
+        .chain(rules.private_links(d.text))
+    {
         match builtin_source(f.kind) {
             Some(b) => a.source_hit(d.decisions, f, Source::BuiltIn(b), Level::A2),
             None => a.flag(f, Level::A2),
@@ -261,6 +280,10 @@ pub fn assess(rules: &OwnerRules, d: &Draft<'_>) -> Assessment {
     }
     if d.new_recipient {
         a.flag(flag(FlagKind::NewRecipient, None, String::new()), Level::A2);
+    }
+    for (id, range) in rules.vault_hits(d.text, d.attachment_text) {
+        let f = flag(FlagKind::VaultSecret, range, String::new());
+        a.source_hit(d.decisions, f, Source::Registered(id), Level::A2);
     }
     for f in dictionary_hits(rules, d.text) {
         a.flag(f, Level::A2);
@@ -312,17 +335,20 @@ fn flag(kind: FlagKind, range: Option<(usize, usize)>, detail: String) -> Flag {
     }
 }
 
-/// The built-in registry source of a structural flag: S4 secrets and S5 personal identifiers.
+/// The built-in registry source of a flag: S4 secrets, one-time codes and private links, and S5
+/// personal identifiers.
 fn builtin_source(kind: FlagKind) -> Option<BuiltIn> {
     match kind {
         FlagKind::Secret => Some(BuiltIn::Secrets),
+        FlagKind::OneTimeCode => Some(BuiltIn::OneTimeCodes),
+        FlagKind::PrivateLink => Some(BuiltIn::PrivateLinks),
         FlagKind::CardNumber | FlagKind::Iban => Some(BuiltIn::PersonalIds),
         _ => None,
     }
 }
 
-/// Exact structural detectors: links, encoded blobs, long numbers, cards, IBANs, secrets and
-/// invisible characters.
+/// Exact structural detectors: links, encoded blobs, long numbers, cards, IBANs, secrets,
+/// one-time codes and invisible characters.
 pub fn structural(text: &str) -> Vec<Flag> {
     let mut out = Vec::new();
     links(text, &mut out);
@@ -330,6 +356,7 @@ pub fn structural(text: &str) -> Vec<Flag> {
     numbers(text, &mut out);
     ibans(text, &mut out);
     secrets(text, &mut out);
+    sources::one_time_codes(text, &mut out);
     for (i, c) in text.char_indices() {
         if is_invisible(c) {
             out.push(flag(
@@ -379,24 +406,32 @@ fn words(text: &str) -> Vec<(usize, usize)> {
     })
 }
 
+/// Byte ranges of the words that are URLs, scheme links, e-mail addresses or host/path links.
+fn link_words(text: &str) -> Vec<(usize, usize)> {
+    words(text)
+        .into_iter()
+        .filter(|&(s, e)| {
+            let w = text[s..e].to_ascii_lowercase();
+            let schemed = w.contains("://")
+                || w.starts_with("www.")
+                || ["mailto:", "data:", "javascript:", "file:"]
+                    .iter()
+                    .any(|p| w.contains(p));
+            let host_path = w.split_once('/').is_some_and(|(host, _)| {
+                host.rsplit_once('.').is_some_and(|(left, tld)| {
+                    !left.is_empty()
+                        && (2..=24).contains(&tld.len())
+                        && tld.bytes().all(|b| b.is_ascii_lowercase())
+                })
+            });
+            schemed || host_path
+        })
+        .collect()
+}
+
 fn links(text: &str, out: &mut Vec<Flag>) {
-    for (s, e) in words(text) {
-        let w = text[s..e].to_ascii_lowercase();
-        let schemed = w.contains("://")
-            || w.starts_with("www.")
-            || ["mailto:", "data:", "javascript:", "file:"]
-                .iter()
-                .any(|p| w.contains(p));
-        let host_path = w.split_once('/').is_some_and(|(host, _)| {
-            host.rsplit_once('.').is_some_and(|(left, tld)| {
-                !left.is_empty()
-                    && (2..=24).contains(&tld.len())
-                    && tld.bytes().all(|b| b.is_ascii_lowercase())
-            })
-        });
-        if schemed || host_path {
-            out.push(flag(FlagKind::Link, Some((s, e)), String::new()));
-        }
+    for range in link_words(text) {
+        out.push(flag(FlagKind::Link, Some(range), String::new()));
     }
 }
 

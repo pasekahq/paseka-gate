@@ -59,18 +59,18 @@ Which sources of the registry (PROTOCOL §6.4) are caught, and by what.
 |---|---|---|---|
 | Files and folders | S8 exact shingle fingerprints | | MinHash; LLM paraphrase check |
 | Agent memory, skills, instruction files, system prompt | S8 fingerprints | | MinHash; LLM paraphrase check |
-| Secrets | S4 gitleaks-style rules | | |
-| Named secrets from a vault | | exact value match | |
-| Private links | | link domains and query tokens | |
+| Secrets | S4 gitleaks-style rules | | entropy rule |
+| Named secrets from a vault | S4 exact value match in body and attachment text | | |
+| Private links | S4 link domains and query tokens | | |
 | MCP sources (mail, calendar, contacts) | S9 on agent-declared reads | | S9 on reads verified by the gate-side MCP proxy |
-| Messages from one peer | S8 fingerprints of that peer's bodies | | MinHash; LLM paraphrase check |
-| Other chats and groups | | content of group X as a source for peers outside X | |
+| Messages from one peer | S8 fingerprints of that peer's bodies, Allow towards that peer | | MinHash; LLM paraphrase check |
+| Other chats and groups | S8 fingerprints of the chat's messages, Allow towards its members | | MinHash; LLM paraphrase check |
 | Memory about third parties | S8 fingerprints of tagged entries | | |
-| Personal identifiers | S5 cards (Luhn) and IBAN (mod 97) | | |
-| One-time codes, 2FA, OTP | decision fixed at Never | the code detector | |
-| Images | | EXIF removal on attach | OCR of text in images |
+| Personal identifiers | S5 cards (Luhn) and IBAN (mod 97) | | phones, addresses, coordinates |
+| One-time codes, 2FA, OTP | S4 code detector, decision fixed at Never | | |
+| Images | | metadata removal on attach (PROTOCOL §3.1), with attachment handling in M2 | OCR of text in images |
 
-Phones, addresses and coordinates have no S5 validator and none is scheduled; long digit runs
+Phones, addresses and coordinates have no S5 validator before the MVP release; long digit runs
 get the S2 flag, which is not a registry source.
 
 ## Later (not in the MVP)
@@ -94,7 +94,7 @@ get the S2 flag, which is not a registry source.
    default by deployment and the PIN attempt limit; conformance harness with the core attacks.
    M1 stores no PIN. Covers d1, d3, d5, d6, d9, d10, d12, d13, d15.
 2. M2 Local gate: storage (rusqlite), MCP server and HTTP API for the agent, journal, policy
-   engine. Covers d4, d11.
+   engine, attachment bytes with image metadata removal (PROTOCOL §3.1). Covers d4, d11.
 3. M3 Consent: consent bot (A1), Mini App (A2) with Ed25519 `initData` verification, first-run
    ceremony. The A2+ PIN channel (PROTOCOL §7.5): the owner sets the PIN at the first-run
    ceremony; the Argon2id verifier lands here, with the ADR for its dependency (size, tree cost,

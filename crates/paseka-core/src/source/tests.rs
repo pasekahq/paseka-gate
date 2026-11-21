@@ -1,7 +1,7 @@
 use paseka_proto::evidence::Channel;
 
 use super::*;
-use crate::testkit::{address, settle, tenant};
+use crate::testkit::{BOB_INBOUND, CHAT, address, audiences, settle, tenant};
 
 const OTP: Source = Source::BuiltIn(BuiltIn::OneTimeCodes);
 const SECRETS: Source = Source::BuiltIn(BuiltIn::Secrets);
@@ -112,7 +112,7 @@ fn a_source_is_registered_once_and_only_in_its_own_tenant() {
         reg.register(&t1, SourceId(1), SourceKind::Files),
         Err(ChangeError::AlreadyRegistered)
     );
-    assert_eq!(reg.kind(&t1, SourceId(1)), Some(SourceKind::AgentContext));
+    assert_eq!(reg.kind(&t1, SourceId(1)), Some(&SourceKind::AgentContext));
     assert_eq!(reg.kind(&t2, SourceId(1)), None);
     let other_tenant = change(
         &t2,
@@ -123,4 +123,43 @@ fn a_source_is_registered_once_and_only_in_its_own_tenant() {
         Channel::TelegramMiniApp,
     );
     assert_eq!(reg.change(&other_tenant), Err(ChangeError::UnknownSource));
+}
+
+#[test]
+fn a_chat_is_allow_towards_its_members_and_own_messages_towards_their_sender() {
+    let reg = audiences();
+    let (chat, inbound) = (Source::Registered(CHAT), Source::Registered(BOB_INBOUND));
+    let cases = [
+        (2, Access::Allow, Access::Allow),
+        (3, Access::Allow, Access::Ask),
+        (4, Access::Ask, Access::Ask),
+    ];
+    for (peer, chat_access, inbound_access) in cases {
+        let d = reg.towards(&tenant(1), &address(peer));
+        assert_eq!(d.access(chat), chat_access, "peer {peer}");
+        assert_eq!(d.access(inbound), inbound_access, "peer {peer}");
+    }
+    assert_eq!(
+        reg.towards(&tenant(2), &address(2)).access(chat),
+        Access::Ask
+    );
+}
+
+#[test]
+fn owner_decisions_override_the_audience_defaults_and_never_stays_in_settings() {
+    let (t, bob, dave) = (tenant(1), address(2), address(4));
+    let mut reg = audiences();
+    let (chat, inbound) = (Source::Registered(CHAT), Source::Registered(BOB_INBOUND));
+    let pin = Channel::TelegramMiniAppPin;
+    let to_never = change(&t, chat, &bob, Access::Never, Surface::Prompt, pin);
+    assert_eq!(reg.change(&to_never), Err(ChangeError::NeverOnlyInSettings));
+    let ask = change(&t, inbound, &bob, Access::Ask, Surface::Prompt, pin);
+    assert_eq!(reg.change(&ask), Ok(()));
+    settle(&mut reg, chat, &bob, Access::Never);
+    settle(&mut reg, chat, &dave, Access::Allow);
+    assert_eq!(reg.towards(&t, &bob).access(chat), Access::Never);
+    assert_eq!(reg.towards(&t, &bob).access(inbound), Access::Ask);
+    assert_eq!(reg.towards(&t, &address(3)).access(chat), Access::Allow);
+    assert_eq!(reg.towards(&t, &dave).access(chat), Access::Allow);
+    assert_eq!(reg.towards(&t, &bob).access(OTP), Access::Never);
 }

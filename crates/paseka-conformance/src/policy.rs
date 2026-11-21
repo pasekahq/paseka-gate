@@ -1,6 +1,6 @@
 //! Attacks on the agent surface, risk evaluation, open mandates, shelves, tripwire mode, the
-//! source registry and trust for peers not verified at pairing (SP-1, SP-7 to SP-11, SP-15,
-//! SP-17, SP-23, SP-24).
+//! source registry with its detectors, and trust for peers not verified at pairing (SP-1, SP-7
+//! to SP-11, SP-15, SP-17, SP-23, SP-24).
 
 use std::collections::BTreeSet;
 
@@ -11,7 +11,8 @@ use paseka_core::peer::PeerKeys;
 use paseka_core::risk::{self, CanaryId, OutputKind, OwnerRules, Required};
 use paseka_core::shelf::{ShareError, Shelf, check_share};
 use paseka_core::source::{
-    Access, Change, ChangeError, Decisions, Source, SourceId, SourceKind, SourceRegistry, Surface,
+    Access, BuiltIn, Change, ChangeError, Decisions, Source, SourceId, SourceKind, SourceRegistry,
+    Surface,
 };
 use paseka_core::template::field_ok;
 use paseka_core::tripwire::{
@@ -50,6 +51,7 @@ fn free(text: &str) -> risk::Draft<'_> {
         text,
         kind: OutputKind::FreeText,
         attachments: 0,
+        attachment_text: &[],
         new_recipient: false,
         sources: &[],
         decisions: &ASK_ALL,
@@ -539,14 +541,16 @@ impl NeverSource {
     }
 }
 
-fn ca54_owner_approval(w: &NeverSource) -> Outcome {
+/// Pass when the agent revises a draft to bob to `text` and the owner's approval of the earlier
+/// prompt through `telegram-miniapp-pin` leaves it `blocked` and unreleased.
+fn never_under_owner_approval(w: &NeverSource, text: &str) -> Outcome {
     let mut d = draft(BODY, Required::Level(Level::A1));
     let prompt = d.clone();
-    if d.revise(1, revision(LEAK, vec![]), NOW + 1).is_err() {
+    if d.revise(1, revision(text, vec![]), NOW + 1).is_err() {
         return Outcome::Fail("setup: revise refused".into());
     }
     d.evaluated(
-        w.required(LEAK, false),
+        w.required(text, false),
         &mvp_channels(),
         seed(2),
         NOW + 1,
@@ -555,15 +559,16 @@ fn ca54_owner_approval(w: &NeverSource) -> Outcome {
     let mut by_pin = approve(&prompt, Channel::TelegramMiniAppPin);
     by_pin.release_digest = d.current.release_digest;
     if d.decide(&by_pin, NOW + 2).is_ok() || d.release(NOW + 2).is_ok() {
-        return Outcome::Fail("owner approval released a Never source".into());
+        return Outcome::Fail(format!("owner approval released {text:?}"));
     }
     match d.state {
         DraftState::Blocked => Outcome::Pass,
-        s => Outcome::Fail(format!("Never source draft is {s:?}")),
+        s => Outcome::Fail(format!("draft of {text:?} is {s:?}")),
     }
 }
 
-fn ca54_open_mandate(w: &NeverSource) -> Outcome {
+/// Pass when `text` to bob, under a matching conversation mandate, is blocked.
+fn never_under_open_mandate(w: &NeverSource, text: &str) -> Outcome {
     let m = conversation(1);
     let th = thread(1);
     let c = Candidate {
@@ -572,16 +577,16 @@ fn ca54_open_mandate(w: &NeverSource) -> Outcome {
         template: None,
         shelf: None,
         thread: &th,
-        body_len: LEAK.len(),
+        body_len: text.len(),
         foreign_attachments: false,
         private_sources: false,
     };
     if let Err(e) = active(&m).matches(&m, &c, false, NOW + 1) {
         return Outcome::Fail(format!("setup: open mandate does not match: {e:?}"));
     }
-    match w.required(LEAK, true) {
+    match w.required(text, true) {
         Required::Block => Outcome::Pass,
-        Required::Level(l) => Outcome::Fail(format!("under an open mandate at {l}")),
+        Required::Level(l) => Outcome::Fail(format!("{text:?} under an open mandate at {l}")),
     }
 }
 
@@ -625,8 +630,8 @@ pub(crate) fn ca54_never_source_leaves() -> Outcome {
         Err(o) => return o,
     };
     all([
-        ca54_owner_approval(&w),
-        ca54_open_mandate(&w),
+        never_under_owner_approval(&w, LEAK),
+        never_under_open_mandate(&w, LEAK),
         ca54_lift_outside_settings(&mut w),
     ])
 }
@@ -701,6 +706,64 @@ pub(crate) fn ca55_conversation_mandate_beyond_allow() -> Outcome {
         out.push(ca55_leaves(&w, &m, API_KEY, DraftState::AwaitingConsent));
         out.push(ca55_leaves(&w, &m, LEAK, DraftState::Blocked));
     }
+    all(out)
+}
+
+const VAULT: SourceId = SourceId(3);
+const VAULT_VALUE: &str = "alice-vault-aaaaaaaa";
+const VAULT_LEAK: &str = "the deploy password is alice-vault-aaaaaaaa";
+const ONE_TIME_CODES: [&str; 3] = [
+    "Your verification code is 482913",
+    "Код подтверждения: 5821",
+    "otpauth://totp/example.org:alice?secret=AAAAAAAA",
+];
+
+pub(crate) fn ca57_one_time_code_and_vault_secret() -> Outcome {
+    let mut w = match NeverSource::new() {
+        Ok(w) => w,
+        Err(o) => return o,
+    };
+    let (tenant, bob) = (w.tenant.clone(), w.bob.clone());
+    let setup = w
+        .registry
+        .register(&tenant, VAULT, SourceKind::VaultSecret)
+        .map_err(|e| format!("register: {e:?}"))
+        .and_then(|()| {
+            w.rules
+                .add_vault_secret(VAULT, VAULT_VALUE)
+                .map_err(|e| format!("vault value: {e:?}"))
+        })
+        .and_then(|()| {
+            w.registry
+                .change(&Change {
+                    tenant: &tenant,
+                    source: Source::Registered(VAULT),
+                    peer: &bob,
+                    access: Access::Never,
+                    surface: Surface::Settings,
+                    channel: Channel::TelegramMiniApp,
+                })
+                .map_err(|e| format!("Never: {e:?}"))
+        });
+    if let Err(e) = setup {
+        return Outcome::Fail(format!("setup: {e}"));
+    }
+    let mut out = Vec::new();
+    for text in ONE_TIME_CODES.into_iter().chain([VAULT_LEAK]) {
+        out.push(never_under_owner_approval(&w, text));
+        out.push(never_under_open_mandate(&w, text));
+    }
+    out.push(expect(
+        w.registry.change(&Change {
+            tenant: &tenant,
+            source: Source::BuiltIn(BuiltIn::OneTimeCodes),
+            peer: &bob,
+            access: Access::Allow,
+            surface: Surface::Settings,
+            channel: Channel::TelegramMiniAppPin,
+        }),
+        |e| *e == ChangeError::Fixed,
+    ));
     all(out)
 }
 

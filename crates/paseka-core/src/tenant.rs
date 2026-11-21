@@ -58,6 +58,11 @@ impl<K: Ord, V> TenantMap<K, V> {
         self.inner.retain(|_, part| !part.is_empty());
     }
 
+    /// The entries of `tenant`'s partition only, in key order.
+    pub fn iter(&self, tenant: &TenantId) -> impl Iterator<Item = (&K, &V)> {
+        self.inner.get(tenant).into_iter().flatten()
+    }
+
     /// Number of entries in `tenant`'s partition.
     pub fn len(&self, tenant: &TenantId) -> usize {
         self.inner.get(tenant).map_or(0, BTreeMap::len)
