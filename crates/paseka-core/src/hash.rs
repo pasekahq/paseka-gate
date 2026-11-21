@@ -1,5 +1,5 @@
-//! Digests of PROTOCOL §3 and §11: content hash, release digest, approval challenge, short
-//! authentication string. Content is never normalised, so anyone can recompute the content hash
+//! Digests of PROTOCOL §3, §10.8 and §11: content hash, release digest, approval challenge,
+//! short authentication strings of pairing and key change. Content is never normalised, so anyone can recompute the content hash
 //! with `sha256sum` from what the approval screen showed.
 
 use paseka_proto::mandate::AttachmentMeta;
@@ -97,6 +97,23 @@ pub fn sas(inviter: &KeyId, guest: &KeyId, code: &Nonce) -> String {
     frame(&mut h, inviter.as_str().as_bytes());
     frame(&mut h, guest.as_str().as_bytes());
     frame(&mut h, code.as_str().as_bytes());
+    six_digits(h)
+}
+
+/// Short authentication string of a key change (PROTOCOL §10.8): six digits over the address
+/// whose key changes, the peer address that confirms, the old key and the new key.
+pub fn key_change_sas(changing: &Address, peer: &Address, old: &KeyId, new: &KeyId) -> String {
+    let mut h = sha2::Sha256::new();
+    frame(&mut h, b"paseka/key-change-sas/v1");
+    frame(&mut h, changing.as_str().as_bytes());
+    frame(&mut h, peer.as_str().as_bytes());
+    frame(&mut h, old.as_str().as_bytes());
+    frame(&mut h, new.as_str().as_bytes());
+    six_digits(h)
+}
+
+/// The first 4 bytes of the digest as an unsigned integer modulo 1000000, as six digits.
+fn six_digits(h: sha2::Sha256) -> String {
     let d: [u8; 32] = h.finalize().into();
     format!(
         "{:06}",
@@ -165,6 +182,22 @@ mod tests {
             let i = &v["input"];
             let got = sas(&s(&i["inviter_key"]), &s(&i["invitee_key"]), &s(&i["code"]));
             assert_eq!(got, s::<String>(&v["sas"]));
+        }
+    }
+
+    #[test]
+    fn key_change_sas_matches_the_protocol_vectors_and_binds_every_input() {
+        let all = vectors();
+        let cases = all["key_change_sas"].as_array().unwrap();
+        assert_eq!(cases.len(), 1);
+        for v in cases {
+            let i = &v["input"];
+            let (changing, peer): (Address, Address) = (s(&i["changing"]), s(&i["peer"]));
+            let (old, new): (KeyId, KeyId) = (s(&i["old_key"]), s(&i["new_key"]));
+            let want: String = s(&v["sas"]);
+            assert_eq!(key_change_sas(&changing, &peer, &old, &new), want);
+            assert_ne!(key_change_sas(&peer, &changing, &old, &new), want);
+            assert_ne!(key_change_sas(&changing, &peer, &new, &old), want);
         }
     }
 }

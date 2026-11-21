@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pasekahq.example.org/contracts/v1/wire/key-replacement.schema.json",
+  "title": "Key replacement payload (JWS typ paseka-key-replacement+jwt, signed by new_key)",
+  "type": "object",
+  "required": [
+    "v",
+    "iss",
+    "revoked_key",
+    "new_key",
+    "next_key_sha256"
+  ],
+  "properties": {
+    "v": {
+      "$ref": "../common.schema.json#/$defs/v"
+    },
+    "iss": {
+      "$ref": "../common.schema.json#/$defs/address",
+      "description": "Sender address, the envelope iss."
+    },
+    "revoked_key": {
+      "$ref": "../common.schema.json#/$defs/key_id",
+      "description": "Equals data.revoked_key."
+    },
+    "new_key": {
+      "$ref": "../common.schema.json#/$defs/key_id",
+      "description": "Equals data.replacement.new_key."
+    },
+    "next_key_sha256": {
+      "$ref": "../common.schema.json#/$defs/sha256",
+      "description": "Equals data.replacement.next_key_sha256."
+    }
+  }
+}

@@ -3,7 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
-use paseka_proto::envelope::{Event, KeyProof, Receipt, WireError};
+use paseka_proto::envelope::{Event, KeyProof, KeyReplacementProof, Receipt, WireError};
 use paseka_proto::evidence::{
     OpenMandateEvidence, TelegramButtonEvidence, TelegramMiniAppEvidence,
 };
@@ -123,6 +123,7 @@ fn parse(schema: &str, b: &[u8]) -> Option<Result<(), String>> {
         "pairing/accept" => ok::<PairAccept>(b),
         "wire/envelope" => Event::parse(b).map(drop).map_err(|e| e.to_string()),
         "wire/key-proof" => ok::<KeyProof>(b),
+        "wire/key-replacement" => ok::<KeyReplacementProof>(b),
         "wire/receipt" => ok::<Receipt>(b),
         "wire/error" => ok::<WireError>(b),
         _ => return None,

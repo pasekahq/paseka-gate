@@ -40,14 +40,17 @@ key, and stays the same across key rotation and migration. Every field that name
 towards a peer (`iss`, `aud`, `to`) holds an address.
 
 Each tenant has exactly one current Ed25519 identity key. Key ids appear only in JWS `kid` and in
-fields that name a key (`key` in pairing messages, `k` in the pair URI, `new_key` in `key.rotate`).
+fields that name a key (`key` in pairing messages, `k` in the pair URI, `new_key` in `key.rotate`,
+`revoked_key` and `new_key` in `key.revoke`).
 A peer record holds, per tenant and peer address: the endpoint, the current key, the commitment
 `next_key_sha256` to the peer's next key (absent until the peer sends one), the previous key with
-its `previous_valid_until`, and the pairing state. A key is valid for the peer at `now` when it is
-the current key, or the previous key while `now < previous_valid_until`. The recorded key changes
-only by rotation (§10.6); revocation follows ADR 0013. The same key signs envelopes, receipts,
-pairing messages and mandates; the JWS `typ` header separates the domains (§8.1). The private key MUST be readable only by the gate's unix
-user and MUST NOT be exported through any interface.
+its `previous_valid_until`, the `key_revoked` mark, the pending key change (§10.8), and the
+pairing state. A key is valid for the peer at `now` when it is the current key and the peer is not
+`key_revoked`, or the previous key while `now < previous_valid_until`. The recorded key changes
+only by rotation (§10.6), revocation (§10.7) or owner-confirmed change (§10.8). The same key
+signs envelopes, receipts, pairing messages and mandates; the JWS `typ` header separates the
+domains (§8.1). The private key MUST be readable only by the gate's unix user and MUST NOT be
+exported through any interface.
 
 ## 3. Content and digests
 
@@ -391,6 +394,7 @@ A mandate is an SD-JWT with zero disclosures: a compact JWS followed by `~`
 | `paseka-receipt+jwt` | delivery receipt (§10.5) |
 | `paseka-pair+jwt` | pairing message (§11) |
 | `paseka-key-proof+jwt` | proof of possession of a new key (§10.6) |
+| `paseka-key-replacement+jwt` | signature of a replacement key in a revocation (§10.7) |
 
 Verifiers MUST: accept only `alg` `EdDSA` with an Ed25519 key; reject `crit`, `jwk`, `jku`,
 `x5u`, `x5c`; take the key only from local state (own key or a key valid now for a paired peer's
@@ -529,6 +533,7 @@ address), `id` (event id), `type`, `iat` (event creation time), `data` (per type
 | `pair.confirmed` | `request_id` (§11) |
 | `unpair` | `reason` (free text, at most 200 characters, shown to the owner) |
 | `key.rotate` | `new_key`, `next_key_sha256`, `previous_valid_until`, `proof` (§10.6) |
+| `key.revoke` | `revoked_key`, optional `replacement` of `new_key`, `next_key_sha256`, `proof` (§10.7) |
 
 The envelope is signed once, when the release commits to the outbox. Retries send the identical
 bytes. `envelope_sha256` is SHA-256 of the compact JWS ASCII bytes.
@@ -541,13 +546,15 @@ In order; the first failure determines the error:
 2. `aud` is the address of a tenant of this gate and `iss` the address of a paired peer of that
    tenant (`not_paired`; the same response for an unknown tenant);
 3. `kid` names a key valid now for that peer (§2), and the signature verifies with that key
-   (`bad_signature` for either);
+   (`bad_signature` for either); for `key.rotate` and `key.revoke` the key is the peer's current
+   key, `key_revoked` or not, and never the previous key;
 4. `iat <= now + 300` (`from_future`) and `now - iat <= 604800` (`stale`);
 5. event id dedupe per `(tenant, iss, id)`: same `envelope_sha256` seen returns `200` with the
    stored receipt and status `duplicate`; a different one is `conflict`. Seen ids are kept for at
    least 604800 + 300 s;
 6. known `type` (`unsupported`); `data` valid (`malformed`);
-7. for `message`: §8.4; for `key.rotate`: §10.6; peer volume limits (`rate_limited`);
+7. for `message`: §8.4; for `key.rotate`: §10.6; for `key.revoke`: §10.7; peer volume limits
+   (`rate_limited`);
 8. store the inbox item and the event id in one transaction, then answer with a signed receipt.
 
 ### 10.4 Retry
@@ -608,8 +615,8 @@ of 1 to 30 days (§9.4); in code `paseka_core::peer::DEFAULT_GRACE_DAYS` and
 
 After §10.3 steps 1 to 6 the receiver checks, in order:
 
-1. the envelope verifies with the current key of the `iss` address; the previous key does not
-   count, even in its grace (`bad_signature`);
+1. the envelope verifies with the current key of the `iss` address, `key_revoked` or not; the
+   previous key does not count, even in its grace (`bad_signature`);
 2. `new_key` names an Ed25519 public key (`malformed`);
 3. `proof` passes §8.1 with `typ` `paseka-key-proof+jwt` and the key `new_key`, and its payload
    equals the envelope `iss` and the `new_key`, `next_key_sha256` and `previous_valid_until` of
@@ -617,15 +624,93 @@ After §10.3 steps 1 to 6 the receiver checks, in order:
 4. if SHA-256 of the 32 bytes of `new_key` equals the `next_key_sha256` on record, it accepts the
    rotation without asking its owner: the current key becomes the previous key with
    `previous_valid_until = min(data.previous_valid_until, iat + 30 days)`, replacing any earlier
-   previous key; `new_key` becomes the current key; `data.next_key_sha256` becomes the
-   commitment on record;
-5. otherwise, with no commitment on record or a commitment to another key, the record does not
-   change: the current key keeps working, `new_key` is not accepted, and the change waits for the
-   receiving owner's confirmation (ADR 0013, "Change without a usable commitment").
+   previous key, or, if the peer is `key_revoked`, no key keeps a grace; `new_key` becomes the
+   current key; `data.next_key_sha256` becomes the commitment on record; the `key_revoked` mark
+   and any pending key change are cleared;
+5. otherwise, with no commitment on record or a commitment to another key, the keys on record do
+   not change: the current key keeps working unless `key_revoked`, `new_key` is not accepted, and
+   `new_key` becomes the pending key change, waiting for the receiving owner's confirmation
+   (§10.8).
 
 In cases 4 and 5 the event is stored and answered per §10.3 step 8. Once `now` reaches
 `previous_valid_until`, envelopes signed with the previous key fail with `bad_signature` and
 mandates signed with it with `mandate_invalid`.
+
+### 10.7 Key revocation
+
+A tenant declares its current key compromised by sending every active peer a `key.revoke`
+envelope signed with that key. Its `data` (`contracts/wire/key-revoke.schema.json`):
+
+- `revoked_key`: key id of the sender's current key;
+- `replacement` (optional): `new_key`, the key id of the key that becomes current;
+  `next_key_sha256`, the commitment to the key that will follow it; and `proof`, a compact JWS
+  with header `{"alg": "EdDSA", "kid": <new_key>, "typ": "paseka-key-replacement+jwt"}` signed by
+  `new_key`. Its payload (`contracts/wire/key-replacement.schema.json`) is `{v, iss, revoked_key,
+  new_key, next_key_sha256}`: `iss` is the envelope `iss`, `revoked_key` that of `data`, the
+  other fields those of `replacement`.
+
+The sender names as replacement its pre-committed next key when that key is usable; otherwise it
+names a fresh key, which takes effect only through §10.8, or no replacement.
+
+After §10.3 steps 1 to 6 the receiver checks, in order:
+
+1. the envelope verifies with the current key of the `iss` address, `key_revoked` or not; the
+   previous key does not count, even in its grace (`bad_signature`);
+2. `revoked_key` names that current key (`malformed`);
+3. with a replacement: `new_key` names an Ed25519 public key other than `revoked_key`
+   (`malformed`), and `proof` passes §8.1 with `typ` `paseka-key-replacement+jwt` and the key
+   `new_key`, with a payload equal to the envelope `iss`, `revoked_key` and the `new_key` and
+   `next_key_sha256` of `replacement` (`bad_signature`);
+4. it marks the peer `key_revoked`: from now on the current key is not valid (§2), the previous
+   key's grace ends whatever its `previous_valid_until`, and any pending key change is dropped;
+5. with a replacement whose `new_key` has a SHA-256 equal to the `next_key_sha256` on record,
+   `new_key` becomes the current key with no previous key, `replacement.next_key_sha256` becomes
+   the commitment on record, and the `key_revoked` mark is cleared;
+6. with any other replacement, `new_key` becomes the pending key change with no grace for the
+   revoked key (§10.8).
+
+A refused revocation changes nothing. A stored one is answered per §10.3 step 8. After step 4
+every envelope signed with the revoked key fails §10.3 step 3 with `bad_signature`, except
+`key.rotate` and `key.revoke`: those can install only a key matching the commitment on record or
+one the receiving owner confirms, so the revoked key adds no authority to them, and the genuine
+owner can still complete the change with the committed key. A revocation signed with the
+compromised key alone therefore only removes authority: a thief can use it to deny service,
+which holding the key already allows, and never to install a key. Once the new key is current,
+the sender re-seals undelivered envelopes with it.
+
+### 10.8 Owner-confirmed key change
+
+A `key.rotate` (§10.6 step 5) or `key.revoke` replacement (§10.7 step 6) that the commitment does
+not cover becomes the peer's pending key change: `new_key`, its `next_key_sha256`, and the grace
+of the replaced key, which is the capped `previous_valid_until` of a rotation received while the
+peer is not `key_revoked`, and none otherwise. A peer record holds at most one pending key change;
+a later one replaces it, a revocation drops it, and an installed key clears it. Until the owner
+confirms it, the current key keeps working unless `key_revoked`, and `new_key` is not accepted.
+
+Receiving side:
+
+1. the gate notifies its owner of the pending key change and shows, in the Mini App, the peer,
+   both addresses, the fingerprints of the current and the new key, whether the current key is
+   revoked, and the key-change short authentication string;
+2. the owner compares the string with the peer's owner through a channel outside the gates and
+   confirms at A2 (§7.4); the confirmation names `new_key`. Only the consent path passes it to the
+   gate; the agent interface has no such operation (§5.2);
+3. if the pending key change still names that `new_key`, `new_key` becomes the current key, the
+   replaced key becomes the previous key until the stored grace (none after a revocation),
+   `next_key_sha256` becomes the commitment on record and the `key_revoked` mark is cleared;
+   otherwise nothing changes and the owner sees the pending key change now on record, if any.
+
+Key-change short authentication string: the first 4 bytes of
+`SHA-256(frame("paseka/key-change-sas/v1") || frame(address whose key changes) || frame(address
+of the confirming peer) || frame(current key id on record) || frame(new key id))` as an unsigned
+integer modulo 1000000, as six digits.
+
+Sending side: the owner starts a key change without a usable commitment, or a revocation, through
+consent with PIN or password in the Mini App (ADR 0013). The gate creates the new key and the key
+that will follow it, sends every active peer `key.rotate` or `key.revoke` with the replacement,
+and shows its owner, per peer, the key-change short authentication string. The owner tells each
+peer's owner through a separate channel that the key changed and reads them the string; a notice
+sent through the gates proves nothing, because a holder of the old key can send the same one.
 
 ## 11. Pairing
 
@@ -650,7 +735,9 @@ in pairing.
    (self-certifying), `aud` is the tenant that issued the code, `|now - iat| <= 300`, and
    consumes the code atomically (`invite_invalid` if unknown, used or expired). An `iss` that is
    one of its own tenants, or is already recorded for that tenant with another key, is refused
-   (`conflict`); a recorded key changes only by rotation (§10.6). It stores bob's `key` and
+   (`conflict`); a recorded key changes only by rotation, revocation or owner-confirmed change
+   (§10.6 to §10.8). Likewise a gate never registers a tenant whose address one of its tenants
+   records as a peer. It stores bob's `key` and
    `next_key_sha256` for bob's address as a peer in state `pending_owner` and answers `200` with
    a JWS signed by alice's key: `{v, type: "pair.accept", id, iss: alice address, aud: bob
    address, key: alice key id, request_id, request_sha256, endpoint: alice endpoint, iat,

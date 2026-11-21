@@ -12,7 +12,7 @@ is normative in `docs/PROTOCOL.md`; these files fix the shapes. Schema `$id`s li
 | `mandate/` | `closed`, `open` (JWS payload claims), `jws-header` (protected header of every paseka JWS) |
 | `evidence/` | approval evidence: `telegram-button` (A1), `telegram-miniapp` (A2), `open-mandate` (A0), `passkey` (A3, reserved) |
 | `agent/` | `<tool>.input` and `<tool>.output` for the ten agent tools, `views` (shared output objects), `error` |
-| `wire/` | gate-to-gate `envelope` payload, `key-rotate` (`data` of a `key.rotate` envelope), `key-proof` (payload of its proof of possession), `receipt` payload, `error` response |
+| `wire/` | gate-to-gate `envelope` payload, `key-rotate` (`data` of a `key.rotate` envelope), `key-proof` (payload of its proof of possession), `key-revoke` (`data` of a `key.revoke` envelope), `key-replacement` (payload of its replacement signature), `receipt` payload, `error` response |
 | `pairing/` | `request` and `accept` payloads |
 | `fixtures/` | examples and test vectors |
 
@@ -23,15 +23,18 @@ is normative in `docs/PROTOCOL.md`; these files fix the shapes. Schema `$id`s li
 implementation SHOULD walk this tree, and the Rust types SHOULD round-trip every valid fixture.
 
 `fixtures/vectors/digests.json` holds byte-exact vectors: release digests (PROTOCOL §3.2),
-approval challenges (§3.3), the short authentication string (§11), and signed objects (a closed
-mandate as SD-JWT, the envelope carrying it, its receipt, a pair request, its accept with alice's
-first commitment, and alice's `key.rotate` to that committed key) made with the test keys listed
-in the file. Each test key has a seed, SHA-256('paseka test key <name>'),
+approval challenges (§3.3), the short authentication strings of pairing (§11) and key change
+(§10.8), and signed objects (a closed mandate as SD-JWT, the envelope carrying it, its receipt, a
+pair request, its accept with alice's first commitment, alice's `key.rotate` to that committed
+key, and alice's `key.revoke` of her pairing key replaced by that committed key) made with the
+test keys listed in the file. Each test key has a seed, SHA-256('paseka test key <name>'),
 and an address, the tenant id. Ed25519 signatures are deterministic, so implementations MUST
 reproduce the compact strings exactly from the given claims serialization and seed.
 
-The file, the closed mandate inside the `wire/envelope` fixtures, the `key-rotate` fixtures of
-`wire/envelope` and the `wire/key-proof` fixtures are generated, never edited by hand: `PASEKA_WRITE_VECTORS=1 cargo test -p paseka-core --lib vectors::` writes them from the
+The file, the closed mandate inside the `wire/envelope` fixtures, the `key-rotate` and
+`key-revoke` fixtures of `wire/envelope`, the `wire/key-proof` and `wire/key-replacement`
+fixtures and `pairing/accept/invalid/key-id-as-next-key.json` are generated, never edited by
+hand: `PASEKA_WRITE_VECTORS=1 cargo test -p paseka-core --lib vectors::` writes them from the
 seeds, and the same test without the variable fails when a file differs from what the generator
 writes.
 
@@ -79,6 +82,16 @@ Additive (ADR 0010, ADR 0013).
 - `common` gains `$defs/jws`.
 - `fixtures/vectors/digests.json` gains the test keys `alice-2` and `alice-3`, the commitment in
   the pair accept, and a signed `key.rotate`.
+
+### Version 1: key revocation
+
+Additive (ADR 0010, ADR 0013).
+
+- `wire/envelope` gains the type `key.revoke`, whose `data` is the new schema `wire/key-revoke`:
+  `revoked_key` and the optional `replacement` of `new_key`, `next_key_sha256`, `proof`.
+- New schema `wire/key-replacement`, the payload of the replacement signature; JWS `typ` gains
+  `paseka-key-replacement+jwt`.
+- `fixtures/vectors/digests.json` gains `key_change_sas` and a signed `key.revoke`.
 
 ## Tolerant readers
 

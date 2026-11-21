@@ -21,6 +21,9 @@ pub enum EventType {
     /// The sender rotated its key.
     #[serde(rename = "key.rotate")]
     KeyRotate,
+    /// The sender declared its current key compromised.
+    #[serde(rename = "key.revoke")]
+    KeyRevoke,
 }
 
 /// Envelope payload with `data` of type `D`. Field order is the signed serialisation order.
@@ -129,6 +132,43 @@ pub struct KeyProof {
     pub previous_valid_until: UnixSecs,
 }
 
+/// `data` of a `key.revoke` event (PROTOCOL §10.7), signed with the key it revokes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KeyRevokeData {
+    /// The key declared compromised: the sender's current key.
+    pub revoked_key: KeyId,
+    /// The key that replaces it, if the sender names one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replacement: Option<KeyReplacement>,
+}
+
+/// The replacement key of a `key.revoke` event.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KeyReplacement {
+    /// The key that becomes current.
+    pub new_key: KeyId,
+    /// SHA-256 of the 32-byte public key that will follow `new_key`.
+    pub next_key_sha256: Sha256,
+    /// A compact JWS `paseka-key-replacement+jwt` over a [`KeyReplacementProof`], signed by
+    /// `new_key`.
+    pub proof: String,
+}
+
+/// Payload of a replacement signature: the revocation it completes, bound to the sender address.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KeyReplacementProof {
+    /// Contract version.
+    pub v: V1,
+    /// Sender address, the envelope `iss`.
+    pub iss: Address,
+    /// Equals `data.revoked_key`.
+    pub revoked_key: KeyId,
+    /// Equals `data.replacement.new_key`.
+    pub new_key: KeyId,
+    /// Equals `data.replacement.next_key_sha256`.
+    pub next_key_sha256: Sha256,
+}
+
 /// A parsed envelope payload.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Event {
@@ -140,6 +180,8 @@ pub enum Event {
     Unpair(Envelope<UnpairData>),
     /// `key.rotate`.
     KeyRotate(Envelope<KeyRotateData>),
+    /// `key.revoke`.
+    KeyRevoke(Envelope<KeyRevokeData>),
 }
 
 impl Event {
@@ -154,6 +196,7 @@ impl Event {
             EventType::PairConfirmed => Self::PairConfirmed(serde_json::from_slice(payload)?),
             EventType::Unpair => Self::Unpair(serde_json::from_slice(payload)?),
             EventType::KeyRotate => Self::KeyRotate(serde_json::from_slice(payload)?),
+            EventType::KeyRevoke => Self::KeyRevoke(serde_json::from_slice(payload)?),
         })
     }
 
@@ -174,6 +217,7 @@ impl Event {
             Self::PairConfirmed(e) => h(e),
             Self::Unpair(e) => h(e),
             Self::KeyRotate(e) => h(e),
+            Self::KeyRevoke(e) => h(e),
         }
     }
 }

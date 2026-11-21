@@ -30,7 +30,8 @@
         "message",
         "pair.confirmed",
         "unpair",
-        "key.rotate"
+        "key.rotate",
+        "key.revoke"
       ]
     },
     "iat": {
@@ -118,6 +119,22 @@
         "properties": {
           "data": {
             "$ref": "key-rotate.schema.json"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "key.revoke"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "$ref": "key-revoke.schema.json"
           }
         }
       }

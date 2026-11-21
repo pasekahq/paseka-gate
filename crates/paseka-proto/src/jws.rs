@@ -35,6 +35,9 @@ pub enum Typ {
     /// Proof of possession of a new key in a `key.rotate` event.
     #[serde(rename = "paseka-key-proof+jwt")]
     KeyProof,
+    /// Signature of a replacement key in a `key.revoke` event, made by that key.
+    #[serde(rename = "paseka-key-replacement+jwt")]
+    KeyReplacement,
 }
 
 /// Upper bound on a compact token: the 6 MiB request limit of PROTOCOL §10.1.

@@ -79,6 +79,13 @@ confirmation the old key keeps working and the new one is not accepted.
   the pre-committed next key (the receiver checks it against `next_key_sha256`), or confirmed by
   the receiving owner as in the path without a commitment. The revoked key gets no grace; the
   sender re-seals undelivered envelopes with the new key.
+- A revoked key keeps signing `key.rotate` and `key.revoke` for its address, and nothing else.
+  Those messages can install only a key that matches the commitment or that the receiving owner
+  confirms, so the revoked key adds no authority to them; without this a thief's revocation would
+  also lock the genuine owner out of the commitment path.
+- A peer record holds at most one pending key change; a later key message replaces it and the
+  owner's confirmation names the new key it accepts, so a replaced pending change cannot be
+  confirmed by mistake.
 
 ### Contract versioning
 The address change is made in place in contract version 1: `iss`/`aud`/`to` change type and

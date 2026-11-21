@@ -1,0 +1,15 @@
+{
+  "aud": "t_01JD0000000000000000000002",
+  "data": {
+    "replacement": {
+      "new_key": "ed25519:Ao7Z7sbUXdIVWp41lldyfOPXePkRyIIAs6lARUXI1uc",
+      "next_key_sha256": "830967ea47b18b8f49eac0d660f18e3ed5da9b6bf2ccb69c29d3cbca82a0630c"
+    },
+    "revoked_key": "ed25519:YM6rJ7zZ2l98CigfxePpz270jIk0mSfrMRnjzMm2TXc"
+  },
+  "iat": 1794276030,
+  "id": "e_01JD0000000000000000000004",
+  "iss": "t_01JD0000000000000000000001",
+  "type": "key.revoke",
+  "v": 1
+}

@@ -72,8 +72,12 @@ Each item is done when the stated check passes. "CA" means a named conformance a
    engine. Covers d4, d11.
 3. M3 Consent: consent bot (A1), Mini App (A2) with Ed25519 `initData` verification, first-run
    ceremony. Covers d7, d8, d16.
-4. M4 Peers: identity keys, pairing by deep link, signed envelopes, retry, behind Caddy.
-   Covers d14, d21.
+4. M4 Peers: identity keys, pairing by deep link, signed envelopes, retry, behind Caddy; key
+   change and revocation in the gate and Mini App (PROTOCOL §10.6 to §10.8): the owner starts
+   them through consent with PIN or password, the gate sends `key.rotate` or `key.revoke` to
+   every peer and shows the key-change short authentication string for the separate notice to
+   each peer's owner, and the receiving owner confirms a pending key change at A2. Covers d14,
+   d21.
 5. M5 Release and install: reproducible build, provenance, audit checklist, `paseka conformance`
    on installs, install and connect skills, hosted-tenant export and migration. Covers d2, d17,
    d18, d19, d20, d22.

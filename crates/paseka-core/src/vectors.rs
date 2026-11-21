@@ -1,6 +1,7 @@
 //! Generator of `contracts/fixtures/vectors/digests.json`, of the closed mandate inside the
-//! `wire/envelope` fixtures, and of the `key.rotate` and `wire/key-proof` fixtures, from the
-//! synthetic seeds.
+//! `wire/envelope` fixtures, of the `key.rotate`, `key.revoke`, `wire/key-proof` and
+//! `wire/key-replacement` fixtures, and of the `pairing/accept` fixture with a malformed
+//! commitment, from the synthetic seeds.
 //!
 //! `cargo test -p paseka-core --lib vectors::` fails unless those files are exactly the
 //! generator's output; with `PASEKA_WRITE_VECTORS=1` it rewrites them instead.
@@ -14,14 +15,16 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::envelope::seal;
-use crate::hash::{Release, approval_challenge, content_sha256, release_digest, sas, sha256};
+use crate::hash::{
+    Release, approval_challenge, content_sha256, key_change_sas, release_digest, sas, sha256,
+};
 use crate::mandate::{CLOSED_TTL_SECS, issue};
-use crate::peer::{Grace, key_rotate_data, key_sha256};
+use crate::peer::{Grace, key_revoke_data, key_rotate_data, key_sha256};
 use crate::testkit::{VECTORS_PATH, event, pairing_id, tenant, thread, ulid};
 use crate::token::{self, key_id};
 use paseka_proto::envelope::{
-    Envelope, EventType, KeyProof, KeyRotateData, MessageData, Receipt, ReceiptStatus,
-    WireAttachment,
+    Envelope, EventType, KeyProof, KeyReplacementProof, KeyRevokeData, KeyRotateData, MessageData,
+    Receipt, ReceiptStatus, WireAttachment,
 };
 use paseka_proto::evidence::{Channel, Decision, RequestBinding, TelegramButtonEvidence};
 use paseka_proto::jws::Typ;
@@ -41,6 +44,7 @@ struct Vectors {
     release_digest: Vec<ReleaseVector>,
     approval_challenge: Vec<ChallengeVector>,
     sas: Vec<SasVector>,
+    key_change_sas: Vec<KeyChangeSasVector>,
     signing_keys: SigningKeys,
     signed: Signed,
 }
@@ -93,6 +97,20 @@ struct SasVector {
 }
 
 #[derive(Serialize)]
+struct KeyChangeSasInput {
+    changing: Address,
+    peer: Address,
+    old_key: KeyId,
+    new_key: KeyId,
+}
+
+#[derive(Serialize)]
+struct KeyChangeSasVector {
+    input: KeyChangeSasInput,
+    sas: String,
+}
+
+#[derive(Serialize)]
 struct TestKey {
     seed_hex: String,
     key_id: KeyId,
@@ -138,6 +156,13 @@ struct SignedKeyRotate {
 }
 
 #[derive(Serialize)]
+struct SignedKeyRevoke {
+    payload: Envelope<KeyRevokeData>,
+    replacement_payload: KeyReplacementProof,
+    compact: String,
+}
+
+#[derive(Serialize)]
 struct Signed {
     evidence_bytes_utf8: String,
     closed_mandate: SignedClaims<ClosedMandate>,
@@ -146,6 +171,7 @@ struct Signed {
     pair_request: SignedPayload<PairRequest>,
     pair_accept: SignedPayload<PairAccept>,
     key_rotate: SignedKeyRotate,
+    key_revoke: SignedKeyRevoke,
 }
 
 struct Party {
@@ -287,12 +313,27 @@ fn generate() -> Vectors {
             code: code.clone(),
         },
     };
+    let key_change = KeyChangeSasVector {
+        sas: key_change_sas(
+            &alice.address(),
+            &bob.address(),
+            &alice.kid(),
+            &alice_3.kid(),
+        ),
+        input: KeyChangeSasInput {
+            changing: alice.address(),
+            peer: bob.address(),
+            old_key: alice.kid(),
+            new_key: alice_3.kid(),
+        },
+    };
     let signed = signed(&alice, &bob, (&alice_2, &alice_3), &first, &challenge, code);
     Vectors {
-        description: "Test vectors for PROTOCOL sections 3.2, 3.3, 11. Synthetic data.",
+        description: "Test vectors for PROTOCOL sections 3.2, 3.3, 10.8, 11. Synthetic data.",
         release_digest: vec![first, second],
         approval_challenge: vec![challenge],
         sas: vec![sas_vector],
+        key_change_sas: vec![key_change],
         signing_keys: SigningKeys {
             description: "Ed25519 seed = SHA-256('paseka test key <name>'); address = tenant id. \
                           alice-2 and alice-3 are alice's next keys. Test only.",
@@ -407,6 +448,37 @@ fn key_rotate(alice: &Party, bob: &Party, new: &Party, next: &Party) -> SignedKe
     }
 }
 
+/// alice's `key.revoke` to bob of her pairing key, replaced by `new`, which commits to `next`.
+fn key_revoke(alice: &Party, bob: &Party, new: &Party, next: &Party) -> SignedKeyRevoke {
+    let data = key_revoke_data(
+        &alice.address(),
+        &alice.key.verifying_key(),
+        Some((&new.key, key_sha256(&next.key.verifying_key()))),
+    );
+    let replacement = data.replacement.as_ref().expect("a replacement");
+    let replacement_payload = KeyReplacementProof {
+        v: V1,
+        iss: alice.address(),
+        revoked_key: data.revoked_key.clone(),
+        new_key: replacement.new_key.clone(),
+        next_key_sha256: replacement.next_key_sha256,
+    };
+    let payload = Envelope {
+        v: V1,
+        iss: alice.address(),
+        aud: bob.address(),
+        id: event(4),
+        kind: EventType::KeyRevoke,
+        iat: AT + 7200,
+        data,
+    };
+    SignedKeyRevoke {
+        compact: seal(&alice.key, &payload),
+        payload,
+        replacement_payload,
+    }
+}
+
 fn signed(
     alice: &Party,
     bob: &Party,
@@ -487,6 +559,7 @@ fn signed(
         pair_request,
         pair_accept,
         key_rotate: key_rotate(alice, bob, alice_next, alice_after_next),
+        key_revoke: key_revoke(alice, bob, alice_next, alice_after_next),
     }
 }
 
@@ -545,6 +618,67 @@ fn key_rotate_fixtures(k: &SignedKeyRotate) -> Vec<(PathBuf, String)> {
     ]
 }
 
+/// The `key.revoke` envelope fixtures and the `wire/key-replacement` fixtures, from the signed
+/// vector.
+fn key_revoke_fixtures(k: &SignedKeyRevoke) -> Vec<(PathBuf, String)> {
+    let (envelope, proof) = (
+        wire_fixtures().join("envelope"),
+        wire_fixtures().join("key-replacement"),
+    );
+    let payload = serde_json::to_value(&k.payload).expect("envelope serialises");
+    let mut alone = payload.clone();
+    alone["data"]
+        .as_object_mut()
+        .expect("data is an object")
+        .remove("replacement");
+    let mut without_proof = payload.clone();
+    without_proof["data"]["replacement"]
+        .as_object_mut()
+        .expect("replacement is an object")
+        .remove("proof");
+    let mut malformed_key = payload;
+    malformed_key["data"]["revoked_key"] = "ed25519:not-a-key".into();
+    let mut key_as_sender = serde_json::to_value(&k.replacement_payload).expect("proof serialises");
+    key_as_sender["iss"] = k.replacement_payload.new_key.as_str().into();
+    vec![
+        (
+            envelope.join("valid/key-revoke.json"),
+            json_file(&k.payload),
+        ),
+        (
+            envelope.join("valid/key-revoke-without-replacement.json"),
+            json_file(&alone),
+        ),
+        (
+            envelope.join("invalid/key-revoke-replacement-without-proof.json"),
+            json_file(&without_proof),
+        ),
+        (
+            envelope.join("invalid/key-revoke-malformed-revoked-key.json"),
+            json_file(&malformed_key),
+        ),
+        (
+            proof.join("valid/basic.json"),
+            json_file(&k.replacement_payload),
+        ),
+        (
+            proof.join("invalid/key-id-as-sender.json"),
+            json_file(&key_as_sender),
+        ),
+    ]
+}
+
+/// A `pairing/accept` fixture whose commitment is a key id instead of a SHA-256 hex digest.
+fn pair_accept_fixtures(accept: &PairAccept) -> Vec<(PathBuf, String)> {
+    let mut key_as_next = serde_json::to_value(accept).expect("accept serialises");
+    key_as_next["next_key_sha256"] = accept.key.as_str().into();
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../contracts/fixtures/pairing/accept");
+    vec![(
+        dir.join("invalid/key-id-as-next-key.json"),
+        json_file(&key_as_next),
+    )]
+}
+
 /// `text` of an envelope fixture with its `data.mandate`, if any, replaced by `mandate`; a
 /// fixture whose mandate lacks the SD-JWT `~` keeps lacking it.
 fn with_mandate(text: &str, mandate: &str) -> String {
@@ -565,6 +699,8 @@ fn outputs() -> Vec<(PathBuf, String)> {
     let vectors = generate();
     let mut out = vec![(PathBuf::from(VECTORS_PATH), json_file(&vectors))];
     out.extend(key_rotate_fixtures(&vectors.signed.key_rotate));
+    out.extend(key_revoke_fixtures(&vectors.signed.key_revoke));
+    out.extend(pair_accept_fixtures(&vectors.signed.pair_accept.payload));
     for dir in ["valid", "invalid"] {
         let fixtures = wire_fixtures().join("envelope").join(dir);
         for entry in std::fs::read_dir(fixtures).expect("fixture dir") {
