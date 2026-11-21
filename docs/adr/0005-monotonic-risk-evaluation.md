@@ -26,8 +26,9 @@ release path.
 
 ## Consequences
 - The monotonic property is a unit-tested invariant of `paseka-core`.
-- Until A2+ and A3 exist, a draft that needs them is blocked with reason `policy` and the owner
-  is notified. The owner may lower that rule's floor to A2 through consent; the gate never falls
-  back to a lower level silently.
+- A draft whose level no configured channel satisfies is not blocked: it goes to the owner
+  through the strongest configured channel, marked as above the available channels, and keeps
+  its computed level (ADR 0015). The owner may lower a rule's floor only through consent; the
+  gate never lowers a computed level.
 - Source provenance is "agent says" for plain agents, verified for data read through the gate's
   MCP proxy, and full taint for ulei.

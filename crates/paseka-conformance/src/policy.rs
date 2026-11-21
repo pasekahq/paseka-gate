@@ -13,7 +13,7 @@ use paseka_proto::mandate::{AttachmentRule, Constraints, OpenKind, OpenMandate, 
 use paseka_proto::tools::{FieldSpec, FieldType, FieldValue, ShareInput, TOOL_NAMES, ToolCall};
 use paseka_proto::{DocId, Level, OpenTrust, Sha256, ShelfId, TemplateId, V1};
 
-use crate::world::{BODY, NOW, TTL, address, draft, jti, seed, tenant, thread};
+use crate::world::{BODY, NOW, TTL, address, draft, jti, mvp_channels, seed, tenant, thread};
 use crate::{Outcome, all, expect};
 
 const CANARY: &str = "PASEKA-CANARY-7f3a9c";
@@ -109,7 +109,7 @@ pub(crate) fn ca20_owner_edit_with_canary() -> Outcome {
     let edited = format!("{BODY} {CANARY}");
     let mut d = draft(BODY, Required::Level(Level::A2));
     let required = risk::assess(&rules(), &free(&edited)).required;
-    d.evaluated(required, Channel::TelegramMiniApp, seed(2), NOW, TTL);
+    d.evaluated(required, &mvp_channels(), seed(2), NOW, TTL);
     match d.state {
         DraftState::Blocked => Outcome::Pass,
         s => Outcome::Fail(format!("owner edit with canary is {s:?}")),
@@ -128,7 +128,7 @@ pub(crate) fn ca22_no_oracle() -> Outcome {
         "challenge",
     ];
     let mut d = draft(&format!("x {CANARY}"), Required::Block);
-    d.evaluated(Required::Block, Channel::TelegramMiniApp, seed(1), NOW, TTL);
+    d.evaluated(Required::Block, &mvp_channels(), seed(1), NOW, TTL);
     let views = [
         d.view(None),
         draft(BODY, Required::Level(Level::A2)).view(None),

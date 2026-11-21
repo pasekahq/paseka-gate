@@ -9,7 +9,7 @@ Protocol: `docs/PROTOCOL.md`. Threat model: `docs/THREAT-MODEL.md`. Plan: `docs/
 | Path | What |
 |---|---|
 | `crates/paseka-proto` | Types of every shape in `contracts/`: ids, mandates, evidence, envelopes, pairing, draft states, agent tool I/O. `tests/contracts.rs` checks them against the fixtures. |
-| `crates/paseka-core` | Pure logic, no I/O, no clock (the caller passes `now`): digests, draft states and approval checks, mandate issuance and verification, open mandates, risk evaluation, templates, shelves, envelope verification, pair accept verification, peer key records with key rotation, revocation and owner-confirmed change, tenant isolation. |
+| `crates/paseka-core` | Pure logic, no I/O, no clock (the caller passes `now`): digests, approval channel selection, draft states and approval checks, mandate issuance and verification, open mandates, risk evaluation, templates, shelves, envelope verification, pair accept verification, peer key records with key rotation, revocation and owner-confirmed change, tenant isolation. |
 | `crates/paseka` | The multicall binary: `serve`, `mcp`, `init`, `conformance`, `version`. |
 | `crates/paseka-conformance` | Conformance attacks CA-n of `docs/THREAT-MODEL.md`, one test per attack. |
 | `contracts/` | JSON Schemas and fixtures. Only grow. |

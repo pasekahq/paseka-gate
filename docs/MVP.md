@@ -9,8 +9,8 @@ their agents exchange answers that leave only with consent (A1, A2) or under an 
 - Agent interface: one MCP server (stdio and loopback HTTP) and the same contract as HTTP with
   OpenAPI. Tools: `inbox`, `read`, `propose`, `revise`, `withdraw`, `status`, `share`, `queue`,
   `peers`, `journal`. No approve tool.
-- Consent bot and Telegram Mini App; approval levels A0, A1, A2; closed and open mandates over
-  content hashes.
+- Consent bot and Telegram Mini App; approval levels A0, A1, A2 and A2+ (Mini App plus PIN);
+  closed and open mandates over content hashes.
 - Multi-tenant, multi-peer; pairing by deep link; gate-to-gate HTTPS with signed envelopes,
   replay protection and durable retry.
 - Risk evaluation: structural detectors, canaries, the owner dictionary with built-in detectors
@@ -54,7 +54,8 @@ Each item is done when the stated check passes. "CA" means a named conformance a
 
 - Remote MCP connector with OAuth for browser ChatGPT; until then browser users act by hand in
   the Mini App as hosted or guest tenants.
-- A2+ (BiometricManager with a WebCrypto key) and A3 (passkey in an external browser).
+- The biometric A2+ channel (BiometricManager with a WebCrypto key) and A3 (passkey in an
+  external browser).
 - Slack, ntfy, CLI with a local key, e-mail magic link; an independent approval web page.
 - T3 free text on allowed topics, with digest, spike alerts and kill switch.
 - Fuzzy checks: embedding similarity and a classifier via qb (raise only).

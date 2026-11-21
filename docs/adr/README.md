@@ -33,3 +33,4 @@ points to the successor.
 | [0012](0012-mandate-encoding-gate-signed-sd-jwt.md) | Mandates are gate-signed SD-JWTs with zero disclosures; evidence stays behind a hash |
 | [0013](0013-tenant-address-and-key-rotation.md) | A tenant's address is its permanent id; keys rotate under it |
 | [0014](0014-release-digest-binds-draft-expiry.md) | The release digest binds the draft expiry; the closed mandate carries it |
+| [0015](0015-strongest-available-channel-a2plus-pin.md) | A level above every channel goes through the strongest one; A2+ is Mini App plus PIN |

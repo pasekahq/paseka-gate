@@ -15,6 +15,9 @@ pub enum Channel {
     /// Telegram Mini App with exact bytes (A2).
     #[serde(rename = "telegram-miniapp")]
     TelegramMiniApp,
+    /// Telegram Mini App with exact bytes plus the owner's PIN or password (A2+).
+    #[serde(rename = "telegram-miniapp-pin")]
+    TelegramMiniAppPin,
     /// Mini App plus a biometric-unlocked key (A2+, later).
     #[serde(rename = "telegram-miniapp-biometric")]
     TelegramMiniAppBiometric,
@@ -29,7 +32,7 @@ impl Channel {
             Self::OpenMandate => Level::A0,
             Self::TelegramButton => Level::A1,
             Self::TelegramMiniApp => Level::A2,
-            Self::TelegramMiniAppBiometric => Level::A2Plus,
+            Self::TelegramMiniAppPin | Self::TelegramMiniAppBiometric => Level::A2Plus,
             Self::Passkey => Level::A3,
         }
     }
@@ -83,6 +86,10 @@ pub struct RequestBinding {
     pub decision: Decision,
     /// Time the gate received the decision.
     pub received_at: UnixSecs,
+    /// Level the request required, present only when it is above every configured channel and
+    /// the evidence `level` is that of the strongest configured channel (PROTOCOL §6.2).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub required_level: Option<Level>,
 }
 
 /// A1 evidence: an inline-button press attested by Telegram.
@@ -111,18 +118,9 @@ pub struct TelegramButtonEvidence {
     pub update_id: i64,
 }
 
-/// A2 evidence: a Mini App decision with verified `initData`.
+/// Fields of a Mini App decision with verified `initData` (PROTOCOL §7.4).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TelegramMiniAppEvidence {
-    /// Contract version, 1.
-    pub v: u32,
-    /// [`Channel::TelegramMiniApp`].
-    pub channel: Channel,
-    /// [`Level::A2`].
-    pub level: Level,
-    /// Request binding.
-    #[serde(flatten)]
-    pub binding: RequestBinding,
+pub struct MiniAppFields {
     /// Consent bot id.
     pub bot_id: i64,
     /// Telegram user who decided.
@@ -140,6 +138,43 @@ pub struct TelegramMiniAppEvidence {
     /// Content hash of the edited body, when edited.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub edited_content_sha256: Option<Sha256>,
+}
+
+/// A2 evidence: a Mini App decision with verified `initData`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TelegramMiniAppEvidence {
+    /// Contract version, 1.
+    pub v: u32,
+    /// [`Channel::TelegramMiniApp`].
+    pub channel: Channel,
+    /// [`Level::A2`].
+    pub level: Level,
+    /// Request binding.
+    #[serde(flatten)]
+    pub binding: RequestBinding,
+    /// The Mini App decision.
+    #[serde(flatten)]
+    pub miniapp: MiniAppFields,
+}
+
+/// A2+ evidence: a Mini App decision with verified `initData` after the owner's PIN or password
+/// passed the gate's check (PROTOCOL §7.5). Never carries the PIN or anything derived from it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TelegramMiniAppPinEvidence {
+    /// Contract version, 1.
+    pub v: u32,
+    /// [`Channel::TelegramMiniAppPin`].
+    pub channel: Channel,
+    /// [`Level::A2Plus`].
+    pub level: Level,
+    /// Request binding.
+    #[serde(flatten)]
+    pub binding: RequestBinding,
+    /// The Mini App decision.
+    #[serde(flatten)]
+    pub miniapp: MiniAppFields,
+    /// Time the gate accepted the PIN or password for this decision.
+    pub pin_verified_at: UnixSecs,
 }
 
 /// A0 evidence: a release under an open mandate.
@@ -173,6 +208,8 @@ mod tests {
         assert!(!Channel::TelegramButton.satisfies(Level::A2));
         assert!(Channel::TelegramMiniApp.satisfies(Level::A1));
         assert!(!Channel::TelegramMiniApp.satisfies(Level::A2Plus));
+        assert!(Channel::TelegramMiniAppPin.satisfies(Level::A2Plus));
+        assert!(!Channel::TelegramMiniAppPin.satisfies(Level::A3));
         assert!(!Channel::OpenMandate.satisfies(Level::A1));
         assert!(!Channel::Passkey.satisfies(Level::A0));
         assert!(serde_json::from_str::<Channel>("\"policy\"").is_err());

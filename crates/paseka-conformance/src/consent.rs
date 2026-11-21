@@ -1,5 +1,6 @@
 //! Attacks on the consent path: drafts, approval requests and decisions (SP-2 to SP-7, SP-16).
 
+use paseka_core::channel::Selection;
 use paseka_core::draft::{DecisionAttempt, DecisionError, DraftError};
 use paseka_core::risk::Required;
 use paseka_proto::draft::{DraftState, Reason};
@@ -7,7 +8,7 @@ use paseka_proto::evidence::Channel;
 use paseka_proto::mandate::AttachmentMeta;
 use paseka_proto::{Level, Sha256};
 
-use crate::world::{BODY, NOW, TTL, approve, draft, revision, seed, tenant};
+use crate::world::{BODY, NOW, TTL, approve, draft, mvp_channels, revision, seed, tenant};
 use crate::{Outcome, all, expect};
 
 pub(crate) fn ca03_unanswered_prompt_expires() -> Outcome {
@@ -31,7 +32,7 @@ pub(crate) fn ca06_old_button_after_revise() -> Outcome {
     }
     d.evaluated(
         Required::Level(Level::A1),
-        Channel::TelegramMiniApp,
+        &mvp_channels(),
         seed(2),
         NOW + 1,
         TTL,
@@ -75,7 +76,7 @@ pub(crate) fn ca08_attachment_swap() -> Outcome {
     d.current = revision(BODY, vec![meta(1)]);
     d.evaluated(
         Required::Level(Level::A2),
-        Channel::TelegramMiniApp,
+        &mvp_channels(),
         seed(1),
         NOW,
         TTL,
@@ -130,12 +131,30 @@ pub(crate) fn ca15_non_approver() -> Outcome {
     })
 }
 
-pub(crate) fn ca21_level_without_channel() -> Outcome {
-    let d = draft(BODY, Required::Level(Level::A2Plus));
-    match (d.state, d.reason, d.request) {
-        (DraftState::Blocked, Some(Reason::Policy), None) => Outcome::Pass,
-        other => Outcome::Fail(format!("{other:?}")),
+pub(crate) fn ca21_level_above_every_channel() -> Outcome {
+    let d = draft(BODY, Required::Level(Level::A3));
+    let Some(req) = d.request.clone() else {
+        return Outcome::Fail(format!("not sent to the owner: {:?}", (d.state, d.reason)));
+    };
+    if req.level != Level::A3
+        || req.selection != Selection::AboveAvailable(Channel::TelegramMiniAppPin)
+    {
+        return Outcome::Fail(format!("request {:?} via {:?}", req.level, req.selection));
     }
+    let strongest = d
+        .clone()
+        .decide(&approve(&d, Channel::TelegramMiniAppPin), NOW + 1);
+    all([
+        expect(
+            d.clone()
+                .decide(&approve(&d, Channel::TelegramMiniApp), NOW + 1),
+            |e| *e == DecisionError::ChannelTooWeak,
+        ),
+        match strongest {
+            Ok(Some(a)) if (a.level, a.required) == (Level::A2Plus, Level::A3) => Outcome::Pass,
+            other => Outcome::Fail(format!("strongest channel: {other:?}")),
+        },
+    ])
 }
 
 pub(crate) fn ca39_cross_tenant_decision() -> Outcome {

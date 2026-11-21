@@ -10,7 +10,7 @@ is normative in `docs/PROTOCOL.md`; these files fix the shapes. Schema `$id`s li
 |------|---------|
 | `common.schema.json` | shared `$defs`: ids, addresses, key ids, hashes, levels, states, attachment metadata |
 | `mandate/` | `closed`, `open` (JWS payload claims), `jws-header` (protected header of every paseka JWS) |
-| `evidence/` | approval evidence: `telegram-button` (A1), `telegram-miniapp` (A2), `open-mandate` (A0), `passkey` (A3, reserved) |
+| `evidence/` | approval evidence: `telegram-button` (A1), `telegram-miniapp` (A2), `telegram-miniapp-pin` (A2+), `open-mandate` (A0), `passkey` (A3, reserved) |
 | `agent/` | `<tool>.input` and `<tool>.output` for the ten agent tools, `views` (shared output objects), `error` |
 | `wire/` | gate-to-gate `envelope` payload, `key-rotate` (`data` of a `key.rotate` envelope), `key-proof` (payload of its proof of possession), `key-revoke` (`data` of a `key.revoke` envelope), `key-replacement` (payload of its replacement signature), `receipt` payload, `error` response |
 | `pairing/` | `request` and `accept` payloads |
@@ -31,8 +31,8 @@ test keys listed in the file. Each test key has a seed, SHA-256('paseka test key
 and an address, the tenant id. Ed25519 signatures are deterministic, so implementations MUST
 reproduce the compact strings exactly from the given claims serialization and seed.
 
-The file, the closed mandate inside the `wire/envelope` fixtures, the `mandate/closed` and
-`evidence/telegram-button` fixtures, the `key-rotate` and `key-revoke` fixtures of
+The file, the closed mandate inside the `wire/envelope` fixtures, the `mandate/closed`,
+`evidence/telegram-button` and `evidence/telegram-miniapp-pin` fixtures, the `key-rotate` and `key-revoke` fixtures of
 `wire/envelope`, the `wire/key-proof` and `wire/key-replacement` fixtures and
 `pairing/accept/invalid/key-id-as-next-key.json` are generated, never edited by
 hand: `PASEKA_WRITE_VECTORS=1 cargo test -p paseka-core --lib vectors::` writes them from the
@@ -103,6 +103,17 @@ Made in place in v1 before any release or deployed peer (ADR 0014).
   after `in_reply_to` (PROTOCOL §3.2).
 - `fixtures/vectors/digests.json` adds `expires` to the release digest inputs; every digest,
   challenge, evidence hash and signed mandate that depends on it is regenerated.
+
+### Version 1: A2+ PIN channel
+
+Additive (ADR 0010, ADR 0015).
+
+- `common` `$defs/channel` gains `telegram-miniapp-pin` (A2+).
+- New schema `evidence/telegram-miniapp-pin`: the A2 fields plus `pin_verified_at`; never the
+  PIN or anything derived from it.
+- `evidence/telegram-button`, `evidence/telegram-miniapp` and `evidence/telegram-miniapp-pin`
+  gain the optional `required_level`, present when the request required a level above every
+  configured channel (PROTOCOL §6.2).
 
 ## Tolerant readers
 

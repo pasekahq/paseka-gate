@@ -3,6 +3,7 @@
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use ed25519_dalek::SigningKey;
+use paseka_core::channel::Channels;
 use paseka_core::draft::{
     DRAFT_LIFETIME_DEFAULT, DecisionAttempt, Draft, RequestSeed, Revision, draft_expires,
 };
@@ -99,6 +100,16 @@ pub(crate) fn revision(body: &str, attachments: Vec<AttachmentMeta>) -> Revision
     }
 }
 
+/// The MVP approval channels: button, Mini App, Mini App with PIN.
+pub(crate) fn mvp_channels() -> Channels {
+    Channels::new(vec![
+        Channel::TelegramButton,
+        Channel::TelegramMiniApp,
+        Channel::TelegramMiniAppPin,
+    ])
+    .expect("fixture channels")
+}
+
 /// Alice's draft to bob, evaluated at `required` with the MVP channels configured.
 pub(crate) fn draft(body: &str, required: Required) -> Draft {
     let mut d = Draft {
@@ -117,7 +128,7 @@ pub(crate) fn draft(body: &str, required: Required) -> Draft {
         expires: expires(),
         updated_at: NOW,
     };
-    d.evaluated(required, Channel::TelegramMiniApp, seed(1), NOW, TTL);
+    d.evaluated(required, &mvp_channels(), seed(1), NOW, TTL);
     d
 }
 
