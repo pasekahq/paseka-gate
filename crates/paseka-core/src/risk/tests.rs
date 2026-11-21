@@ -1,5 +1,6 @@
 use super::*;
-use crate::testkit::free;
+use crate::source::{Access, BuiltIn, Source, SourceKind, SourceRegistry};
+use crate::testkit::{address, free, settle, tenant};
 
 fn kinds(text: &str) -> Vec<FlagKind> {
     let mut k: Vec<FlagKind> = structural(text).into_iter().map(|f| f.kind).collect();
@@ -199,16 +200,19 @@ fn every_matching_canary_is_named_by_id_and_no_flag_carries_its_marker() {
     );
 }
 
+const DOCUMENT: &str = "The quarterly review found that the merger talks with the northern partner \
+    stalled because the valuation gap stayed too wide for both boards to accept.";
+const QUOTE: &str = "Between us: the merger talks with the Northern partner stalled, because the valuation gap stayed too wide.";
+const FILES: SourceId = SourceId(1);
+const MAIL: SourceId = SourceId(2);
+
 #[test]
-fn near_verbatim_quote_of_a_sensitive_document_needs_a2_plus() {
+fn near_verbatim_quote_of_a_registered_document_needs_a2_plus_under_ask() {
     let mut r = OwnerRules::default();
-    r.add_fingerprint(
-        "The quarterly review found that the merger talks with the northern partner stalled \
-         because the valuation gap stayed too wide for both boards to accept.",
-    );
-    let quote = "Between us: the merger talks with the Northern partner stalled, because the valuation gap stayed too wide.";
-    let a = assess(&r, &free(quote));
+    r.add_fingerprint(FILES, DOCUMENT);
+    let a = assess(&r, &free(QUOTE));
     assert_eq!(a.required, Required::Level(Level::A2Plus));
+    assert_eq!(a.flags[0].source, Some(Source::Registered(FILES)));
     let unrelated = "The weather was nice and we walked along the river for an hour before lunch.";
     assert_eq!(
         assess(&r, &free(unrelated)).required,
@@ -216,16 +220,122 @@ fn near_verbatim_quote_of_a_sensitive_document_needs_a2_plus() {
     );
 }
 
+/// Tenant 1 with files source 1 and mail source 2; towards bob (address 2) secrets Allow, files
+/// Never, mail Allow; towards carol (address 3) secrets Never, files Allow, personal ids Allow.
+fn registry() -> SourceRegistry {
+    let mut reg = SourceRegistry::default();
+    reg.register(&tenant(1), FILES, SourceKind::Files).unwrap();
+    reg.register(&tenant(1), MAIL, SourceKind::Mcp).unwrap();
+    let (bob, carol) = (address(2), address(3));
+    let secrets = Source::BuiltIn(BuiltIn::Secrets);
+    settle(&mut reg, secrets, &bob, Access::Allow);
+    settle(&mut reg, Source::Registered(FILES), &bob, Access::Never);
+    settle(&mut reg, Source::Registered(MAIL), &bob, Access::Allow);
+    settle(&mut reg, secrets, &carol, Access::Never);
+    settle(&mut reg, Source::Registered(FILES), &carol, Access::Allow);
+    settle(
+        &mut reg,
+        Source::BuiltIn(BuiltIn::PersonalIds),
+        &carol,
+        Access::Allow,
+    );
+    reg
+}
+
 #[test]
-fn sensitive_source_read_needs_a2_plus() {
-    let r = OwnerRules::default();
-    let src = [SourceRead {
-        sensitive: true,
-        verified: true,
-    }];
-    let d = Draft {
-        sources: &src,
-        ..free("ok")
+fn the_registry_decision_towards_the_recipient_sets_each_source_stage_floor() {
+    let reg = registry();
+    let mut rules = OwnerRules::default();
+    rules.add_fingerprint(FILES, DOCUMENT);
+    let secret = "key sk-abcdefghijklmnopqrstuvwxyz";
+    let card = "card 4111 1111 1111 1111";
+    let read = |source| {
+        [SourceRead {
+            source,
+            verified: true,
+        }]
     };
-    assert_eq!(assess(&r, &d).required, Required::Level(Level::A2Plus));
+    let mail = read(MAIL);
+    let files = read(FILES);
+    let none: [SourceRead; 0] = [];
+    let a1 = Required::Level(Level::A1);
+    let a2 = Required::Level(Level::A2);
+    let a2p = Required::Level(Level::A2Plus);
+    let a0 = Required::Level(Level::A0);
+    let cases: [(u8, &str, &[SourceRead], bool, Required); 22] = [
+        (2, secret, &none, false, a1),
+        (2, secret, &none, true, a0),
+        (3, secret, &none, false, Required::Block),
+        (3, secret, &none, true, Required::Block),
+        (4, secret, &none, false, a2),
+        (4, secret, &none, true, a2),
+        (2, card, &none, false, a2),
+        (3, card, &none, false, a1),
+        (3, card, &none, true, a0),
+        (2, QUOTE, &none, false, Required::Block),
+        (2, QUOTE, &none, true, Required::Block),
+        (3, QUOTE, &none, false, a1),
+        (3, QUOTE, &none, true, a0),
+        (4, QUOTE, &none, false, a2p),
+        (4, QUOTE, &none, true, a2p),
+        (2, "ok", &mail, false, a1),
+        (2, "ok", &mail, true, a0),
+        (3, "ok", &mail, false, a2p),
+        (3, "ok", &mail, true, a2p),
+        (2, "ok", &files, false, Required::Block),
+        (3, "ok", &files, true, a0),
+        (
+            2,
+            "key sk-abcdefghijklmnopqrstuvwxyz at https://example.org/x",
+            &none,
+            true,
+            a2,
+        ),
+    ];
+    for (peer, text, sources, open_mandate, want) in cases {
+        let decisions = reg.towards(&tenant(1), &address(peer));
+        let d = Draft {
+            sources,
+            decisions: &decisions,
+            open_mandate,
+            ..free(text)
+        };
+        assert_eq!(
+            assess(&rules, &d).required,
+            want,
+            "peer {peer}, {text:?}, {sources:?}, open mandate {open_mandate}"
+        );
+    }
+}
+
+#[test]
+fn an_allowed_hit_is_shown_to_the_owner_with_its_source_but_is_no_flag() {
+    let reg = registry();
+    let decisions = reg.towards(&tenant(1), &address(2));
+    let d = Draft {
+        decisions: &decisions,
+        ..free("key sk-abcdefghijklmnopqrstuvwxyz")
+    };
+    let a = assess(&OwnerRules::default(), &d);
+    assert_eq!(a.flags, vec![]);
+    assert_eq!(a.allowed.len(), 1);
+    assert_eq!(a.allowed[0].kind, FlagKind::Secret);
+    assert_eq!(a.allowed[0].source, Some(Source::BuiltIn(BuiltIn::Secrets)));
+}
+
+#[test]
+fn an_allow_for_one_peer_reaches_neither_another_peer_nor_another_tenant() {
+    let reg = registry();
+    let text = "key sk-abcdefghijklmnopqrstuvwxyz";
+    let assess_to = |t: u8, peer: u8| {
+        let decisions = reg.towards(&tenant(t), &address(peer));
+        let d = Draft {
+            decisions: &decisions,
+            ..free(text)
+        };
+        assess(&OwnerRules::default(), &d).required
+    };
+    assert_eq!(assess_to(1, 2), Required::Level(Level::A1));
+    assert_eq!(assess_to(1, 4), Required::Level(Level::A2));
+    assert_eq!(assess_to(2, 2), Required::Level(Level::A2));
 }

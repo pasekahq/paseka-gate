@@ -107,6 +107,7 @@ attacks! {
     "CA-51" "SP-22" "holder of a stolen key moves the peer to their own key by key.rotate or key.revoke" => wire::ca51_thief_moves_peer_to_own_key;
     "CA-52" "SP-22" "peer's revoked key, or the previous key whose grace a revocation ended, used" => wire::ca52_revoked_key_used;
     "CA-53" "SP-23" "tripwire mode cleared without PIN: through A1, A2, an open mandate, a mode change or the agent" => policy::ca53_clear_tripwire_without_pin;
+    "CA-54" "SP-24" "content of a Never source released by an owner approval, an open mandate or a Never lifted outside the settings" => policy::ca54_never_source_leaves;
 }
 
 /// Runs every attack.

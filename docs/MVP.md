@@ -14,7 +14,8 @@ their agents exchange answers that leave only with consent (A1, A2) or under an 
 - Multi-tenant, multi-peer; pairing by deep link; gate-to-gate HTTPS with signed envelopes,
   replay protection and durable retry.
 - Risk evaluation: structural detectors, canaries, the owner dictionary with built-in detectors
-  and personal lists; fingerprints of sensitive folders if cheap.
+  and personal lists; the source registry with Allow, Ask or Never per source and peer
+  (PROTOCOL §6.4), with the sources of Source coverage below.
 - Trust levels T0, T1, T2 (shelves).
 - Conformance attack suite runnable as `paseka conformance`.
 - Reproducible release with CI-only publishing and provenance; install skill; first-run ceremony.
@@ -36,7 +37,7 @@ Each item is done when the stated check passes. "CA" means a named conformance a
 | d7 | A1: a button press in the consent bot yields a mandate the release check accepts; a press for another request id or nonce is rejected. | Integration test with a fake Telegram Bot API; CA-4, CA-10, CA-15, CA-47. |
 | d8 | A2: Mini App `initData` is accepted only with a valid Ed25519 third-party signature and a fresh `auth_date`; HMAC-only or stale data is rejected. | Unit tests with Bot API test vectors; CA-11, CA-14, CA-16, CA-17. |
 | d9 | A0 open mandates release only within constraints (template, length, rate, window); a second open mandate for the same scope is refused while one is live. | `paseka-core` `open` tests; CA-25, CA-26, CA-27, CA-28. |
-| d10 | Risk evaluation is monotonic: free text to a peer is at least A1; structural flag or dictionary hit gives A2 with highlights; a canary blocks even with valid consent and alerts the owner. | `paseka-core` `risk` tests; CA-18, CA-19, CA-20, CA-21, CA-40, CA-41. |
+| d10 | Risk evaluation is monotonic: free text to a peer is at least A1; structural flag or dictionary hit gives A2 with highlights; a canary blocks even with valid consent and alerts the owner; content of a Never source is blocked under consent and open mandates, and Never changes only on the settings page. | `paseka-core` `risk` and `source` tests; CA-18, CA-19, CA-20, CA-21, CA-40, CA-41, CA-54. |
 | d11 | The agent cannot edit the dictionary, policies, peers or approvers; changes go through consent. | CA-23, CA-24. |
 | d12 | T2: `share` sends shelf bytes read by the gate only when the doc is on a shelf open to that peer; the note is at most 200 characters with no links or flags. | `paseka-core` `shelf` tests; CA-29, CA-30. |
 | d13 | Tenant isolation: no operation of tenant A reads, releases or lists data of tenant B. | CA-32, CA-38, CA-39; `TenantMap` tests. |
@@ -49,6 +50,28 @@ Each item is done when the stated check passes. "CA" means a named conformance a
 | d20 | An agent following `skills/install/SKILL.md` on a clean host reaches a running gate with steps 1 to 5 passed and a self-check reporting green. | Manual dry run by the owner with one agent, recorded in the release notes. |
 | d21 | Alice's agent (Claude Code, L2 recipe) asks Bob's agent (ulei or Hermes) a question; Bob approves in the Mini App; Alice's agent reads the answer from its inbox. | End-to-end manual scenario on two test gates, example.org names. |
 | d22 | `/version` reports the build hash; a hosted tenant can export its journal and migrate to a self-host gate with one command. | Integration test of `export` and `import`. |
+
+## Source coverage
+
+Which sources of the registry (PROTOCOL §6.4) are caught, and by what.
+
+| Source | MVP, built | MVP, to build | After the MVP |
+|---|---|---|---|
+| Files and folders | S8 exact shingle fingerprints | | MinHash; LLM paraphrase check |
+| Agent memory, skills, instruction files, system prompt | S8 fingerprints | | MinHash; LLM paraphrase check |
+| Secrets | S4 gitleaks-style rules | | |
+| Named secrets from a vault | | exact value match | |
+| Private links | | link domains and query tokens | |
+| MCP sources (mail, calendar, contacts) | S9 on agent-declared reads | | S9 on reads verified by the gate-side MCP proxy |
+| Messages from one peer | S8 fingerprints of that peer's bodies | | MinHash; LLM paraphrase check |
+| Other chats and groups | | content of group X as a source for peers outside X | |
+| Memory about third parties | S8 fingerprints of tagged entries | | |
+| Personal identifiers | S5 cards (Luhn) and IBAN (mod 97) | | |
+| One-time codes, 2FA, OTP | decision fixed at Never | the code detector | |
+| Images | | EXIF removal on attach | OCR of text in images |
+
+Phones, addresses and coordinates have no S5 validator and none is scheduled; long digit runs
+get the S2 flag, which is not a registry source.
 
 ## Later (not in the MVP)
 
@@ -67,7 +90,7 @@ Each item is done when the stated check passes. "CA" means a named conformance a
 ## Milestones (dependency order)
 
 1. M1 Core: `paseka-proto` types matching `contracts/`; `paseka-core` canonical hash, mandate
-   verification, risk levels, trust and shelf checks, tenant types, the PIN kind with its
+   verification, risk levels, the source registry, trust and shelf checks, tenant types, the PIN kind with its
    default by deployment and the PIN attempt limit; conformance harness with the core attacks.
    M1 stores no PIN. Covers d1, d3, d5, d6, d9, d10, d12, d13, d15.
 2. M2 Local gate: storage (rusqlite), MCP server and HTTP API for the agent, journal, policy

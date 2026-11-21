@@ -4,7 +4,7 @@ Status: Accepted
 Date: 2026-11-21
 
 ## Context
-Fingerprint hits and reads from sensitive folders require A2+ (ADR 0005), and the owner may raise
+Fingerprint hits and reads of registered sources require A2+ (ADR 0005, ADR 0018), and the owner may raise
 rules to A3. The concept names A2+ as a biometric-unlocked key and A3 as a passkey, neither of
 which is in the MVP, so such drafts could never be released at all. The owner decided (GRILL
 decisions 7 and 7a) that high risk is never blocked for a missing channel: the strongest

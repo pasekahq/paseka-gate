@@ -1,11 +1,14 @@
-//! Attacks on the agent surface, risk evaluation, open mandates, shelves and tripwire mode
-//! (SP-1, SP-7 to SP-11, SP-17, SP-23).
+//! Attacks on the agent surface, risk evaluation, open mandates, shelves, tripwire mode and the
+//! source registry (SP-1, SP-7 to SP-11, SP-17, SP-23, SP-24).
 
 use std::collections::BTreeSet;
 
 use paseka_core::open::{Candidate, OpenBook, OpenDenied, SlotError, thread_trust};
 use paseka_core::risk::{self, CanaryId, OutputKind, OwnerRules, Required};
 use paseka_core::shelf::{ShareError, Shelf, check_share};
+use paseka_core::source::{
+    Access, Change, ChangeError, Decisions, Source, SourceId, SourceKind, SourceRegistry, Surface,
+};
 use paseka_core::template::field_ok;
 use paseka_core::tripwire::{
     ClearAttempt, ClearError, McpWindow, ModeError, TripwireBook, TripwireMode,
@@ -14,9 +17,11 @@ use paseka_proto::draft::{DraftKind, DraftState};
 use paseka_proto::evidence::Channel;
 use paseka_proto::mandate::{AttachmentRule, Constraints, OpenKind, OpenMandate, OpenProof, Rate};
 use paseka_proto::tools::{FieldSpec, FieldType, FieldValue, ShareInput, TOOL_NAMES, ToolCall};
-use paseka_proto::{DocId, Level, OpenTrust, Sha256, ShelfId, TemplateId, V1};
+use paseka_proto::{Address, DocId, Level, OpenTrust, Sha256, ShelfId, TemplateId, TenantId, V1};
 
-use crate::world::{BODY, NOW, TTL, address, draft, jti, mvp_channels, seed, tenant, thread};
+use crate::world::{
+    BODY, NOW, TTL, address, approve, draft, jti, mvp_channels, revision, seed, tenant, thread,
+};
 use crate::{Outcome, all, expect};
 
 const CANARY: &str = "PASEKA-CANARY-7f3a9c";
@@ -32,6 +37,8 @@ fn rules() -> OwnerRules {
     r
 }
 
+static ASK_ALL: Decisions = Decisions::new();
+
 fn free(text: &str) -> risk::Draft<'_> {
     risk::Draft {
         text,
@@ -39,6 +46,7 @@ fn free(text: &str) -> risk::Draft<'_> {
         attachments: 0,
         new_recipient: false,
         sources: &[],
+        decisions: &ASK_ALL,
         fuzzy_hint: None,
         tripwire: false,
         open_mandate: false,
@@ -448,4 +456,159 @@ pub(crate) fn ca53_clear_tripwire_without_pin() -> Outcome {
         out.push(Outcome::Fail("a PIN decision did not clear".into()));
     }
     all(out)
+}
+
+const SECRET_DOC: SourceId = SourceId(1);
+const SECRET_TEXT: &str = "The quarterly review found that the merger talks with the northern partner \
+    stalled because the valuation gap stayed too wide for both boards to accept.";
+const LEAK: &str = "Between us: the merger talks with the Northern partner stalled, because the valuation gap stayed too wide.";
+
+fn conversation(i: u8) -> OpenMandate {
+    let m = open_t1(i, 10);
+    OpenMandate {
+        exp: NOW + 1800,
+        trust: OpenTrust::Conversation,
+        constraints: Constraints {
+            templates: vec![],
+            max_len: None,
+            attachments: None,
+            rate: Rate::default(),
+            thread: Some(thread(1)),
+            ..m.constraints
+        },
+        ..m
+    }
+}
+
+/// Alice's gate with a registered document that is Never towards bob.
+struct NeverSource {
+    tenant: TenantId,
+    bob: Address,
+    registry: SourceRegistry,
+    rules: OwnerRules,
+}
+
+impl NeverSource {
+    fn new() -> Result<Self, Outcome> {
+        let (tenant, bob) = (tenant(1), address(2));
+        let mut registry = SourceRegistry::default();
+        let mut rules = rules();
+        rules.add_fingerprint(SECRET_DOC, SECRET_TEXT);
+        registry
+            .register(&tenant, SECRET_DOC, SourceKind::Files)
+            .map_err(|e| Outcome::Fail(format!("setup: register refused: {e:?}")))?;
+        registry
+            .change(&Change {
+                tenant: &tenant,
+                source: Source::Registered(SECRET_DOC),
+                peer: &bob,
+                access: Access::Never,
+                surface: Surface::Settings,
+                channel: Channel::TelegramMiniApp,
+            })
+            .map_err(|e| Outcome::Fail(format!("setup: Never refused in settings: {e:?}")))?;
+        Ok(Self {
+            tenant,
+            bob,
+            registry,
+            rules,
+        })
+    }
+
+    /// The required level of the leaking text to bob.
+    fn required(&self, open_mandate: bool) -> Required {
+        let decisions = self.registry.towards(&self.tenant, &self.bob);
+        let d = risk::Draft {
+            decisions: &decisions,
+            open_mandate,
+            ..free(LEAK)
+        };
+        risk::assess(&self.rules, &d).required
+    }
+}
+
+fn ca54_owner_approval(w: &NeverSource) -> Outcome {
+    let mut d = draft(BODY, Required::Level(Level::A1));
+    let prompt = d.clone();
+    if d.revise(1, revision(LEAK, vec![]), NOW + 1).is_err() {
+        return Outcome::Fail("setup: revise refused".into());
+    }
+    d.evaluated(w.required(false), &mvp_channels(), seed(2), NOW + 1, TTL);
+    let mut by_pin = approve(&prompt, Channel::TelegramMiniAppPin);
+    by_pin.release_digest = d.current.release_digest;
+    if d.decide(&by_pin, NOW + 2).is_ok() || d.release(NOW + 2).is_ok() {
+        return Outcome::Fail("owner approval released a Never source".into());
+    }
+    match d.state {
+        DraftState::Blocked => Outcome::Pass,
+        s => Outcome::Fail(format!("Never source draft is {s:?}")),
+    }
+}
+
+fn ca54_open_mandate(w: &NeverSource) -> Outcome {
+    let m = conversation(1);
+    let th = thread(1);
+    let c = Candidate {
+        to: &w.bob,
+        kind: DraftKind::FreeText,
+        template: None,
+        shelf: None,
+        thread: &th,
+        body_len: LEAK.len(),
+        foreign_attachments: false,
+        private_sources: false,
+    };
+    if let Err(e) = active(&m).matches(&m, &c, false, NOW + 1) {
+        return Outcome::Fail(format!("setup: open mandate does not match: {e:?}"));
+    }
+    match w.required(true) {
+        Required::Block => Outcome::Pass,
+        Required::Level(l) => Outcome::Fail(format!("under an open mandate at {l}")),
+    }
+}
+
+fn ca54_lift_outside_settings(w: &mut NeverSource) -> Outcome {
+    let (tenant, bob) = (w.tenant.clone(), w.bob.clone());
+    let lift = |surface, channel| Change {
+        tenant: &tenant,
+        source: Source::Registered(SECRET_DOC),
+        peer: &bob,
+        access: Access::Allow,
+        surface,
+        channel,
+    };
+    let mut out = vec![
+        expect(
+            w.registry
+                .change(&lift(Surface::Prompt, Channel::TelegramMiniAppPin)),
+            |e| *e == ChangeError::NeverOnlyInSettings,
+        ),
+        expect(
+            w.registry
+                .change(&lift(Surface::Settings, Channel::OpenMandate)),
+            |e| *e == ChangeError::ChannelTooWeak,
+        ),
+    ];
+    out.extend(
+        TOOL_NAMES
+            .into_iter()
+            .filter(|n| n.contains("source") || n.contains("allow"))
+            .map(|n| Outcome::Fail(format!("agent tool {n} reaches the source registry"))),
+    );
+    if w.required(true) != Required::Block {
+        out.push(Outcome::Fail("a refused change lifted Never".into()));
+    }
+    all(out)
+}
+
+pub(crate) fn ca54_never_source_leaves() -> Outcome {
+    let mut w = match NeverSource::new() {
+        Ok(w) => w,
+        Err(o) => return o,
+    };
+    all([
+        ca54_owner_approval(&w),
+        ca54_open_mandate(&w),
+        ca54_lift_outside_settings(&mut w),
+    ])
 }

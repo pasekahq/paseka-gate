@@ -2,13 +2,17 @@
 //!
 //! Every check can only raise the requirement ([`Assessment::raise`]); none can lower it. Free
 //! text needs at least A1 whatever a classifier says. Exact detectors (structure, dictionary,
-//! canaries, fingerprints) run here; fuzzy signals arrive as an optional level hint.
+//! canaries, fingerprints) run here; fuzzy signals arrive as an optional level hint. Stages S4,
+//! S5, S8 and S9 report the source they matched, and the source registry's decision towards the
+//! recipient sets their floor.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use base64::Engine as _;
 use base64::engine::general_purpose::{STANDARD_NO_PAD, URL_SAFE_NO_PAD};
 use paseka_proto::Level;
+
+use crate::source::{Access, BuiltIn, Decisions, Source, SourceId};
 
 /// Default maximum text length in bytes before a [`FlagKind::TooLong`] flag.
 pub const DEFAULT_MAX_LEN: usize = 4000;
@@ -45,10 +49,10 @@ pub enum FlagKind {
     NewRecipient,
     /// Owner dictionary term.
     Dictionary,
-    /// Near-verbatim match of a sensitive-folder fingerprint.
+    /// Near-verbatim match of a registered source's fingerprint.
     Fingerprint,
-    /// Sensitive source read during the peer turn.
-    SensitiveSource,
+    /// Registered source read during the peer turn.
+    SourceRead,
     /// A fuzzy check raised the level.
     Fuzzy,
     /// The tenant is in tripwire mode.
@@ -68,6 +72,8 @@ pub struct Flag {
     pub end: Option<usize>,
     /// Short owner-facing detail; never the matched secret itself.
     pub detail: String,
+    /// The registry source the match belongs to, for stages S4, S5, S8 and S9.
+    pub source: Option<Source>,
 }
 
 /// Requirement for releasing a draft. Ordered by friction; [`Required::Block`] is the top.
@@ -86,6 +92,9 @@ pub struct Assessment {
     pub required: Required,
     /// Flags for the owner's approval screen.
     pub flags: Vec<Flag>,
+    /// Hits on sources the registry allows towards the recipient: shown to the owner, no floor,
+    /// no flag for S12.
+    pub allowed: Vec<Flag>,
     /// Canaries found, by id, in settings order; empty when none matched.
     pub canaries: Vec<CanaryId>,
 }
@@ -94,6 +103,27 @@ impl Assessment {
     /// Raises the requirement to at least `r`. There is no way to lower it.
     pub fn raise(&mut self, r: Required) {
         self.required = self.required.max(r);
+    }
+
+    fn flag(&mut self, f: Flag, floor: Level) {
+        self.flags.push(f);
+        self.raise(Required::Level(floor));
+    }
+
+    /// A hit on `source`: Allow records it only, Ask raises to the stage `floor`, Never blocks.
+    fn source_hit(&mut self, decisions: &Decisions, f: Flag, source: Source, floor: Level) {
+        let f = Flag {
+            source: Some(source),
+            ..f
+        };
+        match decisions.access(source) {
+            Access::Allow => self.allowed.push(f),
+            Access::Ask => self.flag(f, floor),
+            Access::Never => {
+                self.flags.push(f);
+                self.raise(Required::Block);
+            }
+        }
     }
 }
 
@@ -108,11 +138,11 @@ pub enum OutputKind {
     Share,
 }
 
-/// A source read during the peer-started turn.
+/// A read of a registered source during the peer-started turn.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceRead {
-    /// Whether the source is in a folder the owner marked sensitive.
-    pub sensitive: bool,
+    /// The source read.
+    pub source: SourceId,
     /// Whether the read is in the gate's own MCP log rather than claimed by the agent.
     pub verified: bool,
 }
@@ -124,8 +154,8 @@ pub struct OwnerRules {
     dictionary: Vec<Vec<char>>,
     /// Canary markers, normalised, with their ids.
     canaries: Vec<(CanaryId, String)>,
-    /// Shingle sets of sensitive documents.
-    fingerprints: Vec<BTreeSet<u64>>,
+    /// Shingle sets of registered sources' documents.
+    fingerprints: Vec<(SourceId, BTreeSet<u64>)>,
     /// Maximum length before a flag; [`DEFAULT_MAX_LEN`] when zero.
     pub max_len: usize,
 }
@@ -161,11 +191,11 @@ impl OwnerRules {
         Ok(())
     }
 
-    /// Fingerprints a sensitive document for near-verbatim detection.
-    pub fn add_fingerprint(&mut self, document: &str) {
+    /// Fingerprints `document` of registered source `source` for near-verbatim detection.
+    pub fn add_fingerprint(&mut self, source: SourceId, document: &str) {
         let s = shingles(document);
         if !s.is_empty() {
-            self.fingerprints.push(s);
+            self.fingerprints.push((source, s));
         }
     }
 }
@@ -183,6 +213,8 @@ pub struct Draft<'a> {
     pub new_recipient: bool,
     /// Sources read during the turn.
     pub sources: &'a [SourceRead],
+    /// The source registry's decisions towards the recipient.
+    pub decisions: &'a Decisions,
     /// Level suggested by a fuzzy check (embeddings, classifier). Can only raise, to A2 at most.
     pub fuzzy_hint: Option<Level>,
     /// Whether tripwire mode is in effect for the tenant (S11,
@@ -200,61 +232,63 @@ pub fn assess(rules: &OwnerRules, d: &Draft<'_>) -> Assessment {
     };
     let mut a = Assessment {
         required: Required::Level(base),
-        flags: structural(d.text),
+        flags: Vec::new(),
+        allowed: Vec::new(),
         canaries: canary_hits(rules, d.text),
     };
+    for f in structural(d.text) {
+        match builtin_source(f.kind) {
+            Some(b) => a.source_hit(d.decisions, f, Source::BuiltIn(b), Level::A2),
+            None => a.flag(f, Level::A2),
+        }
+    }
     let max_len = if rules.max_len == 0 {
         DEFAULT_MAX_LEN
     } else {
         rules.max_len
     };
     if d.text.len() > max_len {
-        a.flags.push(flag(
-            FlagKind::TooLong,
-            None,
-            format!("{} bytes", d.text.len()),
-        ));
+        let f = flag(FlagKind::TooLong, None, format!("{} bytes", d.text.len()));
+        a.flag(f, Level::A2);
     }
     if d.attachments > 0 {
-        a.flags.push(flag(
+        let f = flag(
             FlagKind::Attachment,
             None,
             format!("{} attachment(s)", d.attachments),
-        ));
+        );
+        a.flag(f, Level::A2);
     }
     if d.new_recipient {
-        a.flags
-            .push(flag(FlagKind::NewRecipient, None, String::new()));
+        a.flag(flag(FlagKind::NewRecipient, None, String::new()), Level::A2);
     }
-    a.flags.extend(dictionary_hits(rules, d.text));
-    if !a.flags.is_empty() {
-        a.raise(Required::Level(Level::A2));
+    for f in dictionary_hits(rules, d.text) {
+        a.flag(f, Level::A2);
     }
-    if fingerprint_hit(rules, d.text) {
-        a.flags
-            .push(flag(FlagKind::Fingerprint, None, String::new()));
-        a.raise(Required::Level(Level::A2Plus));
+    for id in fingerprint_hits(rules, d.text) {
+        let f = flag(FlagKind::Fingerprint, None, String::new());
+        a.source_hit(d.decisions, f, Source::Registered(id), Level::A2Plus);
     }
-    if d.sources.iter().any(|s| s.sensitive) {
-        let verified = d.sources.iter().any(|s| s.sensitive && s.verified);
+    let mut reads: BTreeMap<SourceId, bool> = BTreeMap::new();
+    for r in d.sources {
+        *reads.entry(r.source).or_default() |= r.verified;
+    }
+    for (id, verified) in reads {
         let detail = if verified {
             "per gate MCP log"
         } else {
             "agent says"
         };
-        a.flags
-            .push(flag(FlagKind::SensitiveSource, None, detail.into()));
-        a.raise(Required::Level(Level::A2Plus));
+        let f = flag(FlagKind::SourceRead, None, detail.into());
+        a.source_hit(d.decisions, f, Source::Registered(id), Level::A2Plus);
     }
     if let Some(hint) = d.fuzzy_hint.filter(|&h| h > Level::A0) {
         let capped = hint.min(Level::A2);
-        a.flags
-            .push(flag(FlagKind::Fuzzy, None, capped.to_string()));
-        a.raise(Required::Level(capped));
+        a.flag(flag(FlagKind::Fuzzy, None, capped.to_string()), capped);
     }
     if d.tripwire {
-        a.flags.push(flag(FlagKind::Tripwire, None, String::new()));
-        a.raise(Required::Level(crate::tripwire::TRIPWIRE_LEVEL));
+        let f = flag(FlagKind::Tripwire, None, String::new());
+        a.flag(f, crate::tripwire::TRIPWIRE_LEVEL);
     }
     if !a.canaries.is_empty() {
         a.flags.push(flag(FlagKind::Canary, None, String::new()));
@@ -274,6 +308,16 @@ fn flag(kind: FlagKind, range: Option<(usize, usize)>, detail: String) -> Flag {
         start: range.map(|r| r.0),
         end: range.map(|r| r.1),
         detail,
+        source: None,
+    }
+}
+
+/// The built-in registry source of a structural flag: S4 secrets and S5 personal identifiers.
+fn builtin_source(kind: FlagKind) -> Option<BuiltIn> {
+    match kind {
+        FlagKind::Secret => Some(BuiltIn::Secrets),
+        FlagKind::CardNumber | FlagKind::Iban => Some(BuiltIn::PersonalIds),
+        _ => None,
     }
 }
 
@@ -631,13 +675,18 @@ fn shingles(text: &str) -> BTreeSet<u64> {
         .collect()
 }
 
-/// Near-verbatim: at least 3 shared shingles, and either 8 shared or half of the text's own.
-fn fingerprint_hit(rules: &OwnerRules, text: &str) -> bool {
+/// Sources with a near-verbatim document: at least 3 shared shingles, and either 8 shared or
+/// half of the text's own. Each source once, in registration order.
+fn fingerprint_hits(rules: &OwnerRules, text: &str) -> Vec<SourceId> {
     let s = shingles(text);
-    rules.fingerprints.iter().any(|d| {
+    let mut out: Vec<SourceId> = Vec::new();
+    for (id, d) in &rules.fingerprints {
         let shared = s.intersection(d).count();
-        shared >= 3 && (shared >= 8 || shared * 2 >= s.len())
-    })
+        if shared >= 3 && (shared >= 8 || shared * 2 >= s.len()) && !out.contains(id) {
+            out.push(*id);
+        }
+    }
+    out
 }
 
 #[cfg(test)]

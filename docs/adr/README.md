@@ -36,3 +36,4 @@ points to the successor.
 | [0015](0015-strongest-available-channel-a2plus-pin.md) | A level above every channel goes through the strongest one; A2+ is Mini App plus PIN |
 | [0016](0016-tripwire-full-alarm-cleared-with-pin.md) | A canary hit raises a full alarm by default; only an A2+ decision clears it |
 | [0017](0017-conversation-trust-without-message-limit.md) | Conversation trust has no message limit; defaults live in one table |
+| [0018](0018-source-registry-allow-ask-never.md) | A source registry decides Allow, Ask or Never per source and peer |

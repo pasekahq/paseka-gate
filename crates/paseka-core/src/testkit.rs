@@ -14,6 +14,10 @@ use crate::channel::Channels;
 use crate::draft::{Draft, RequestSeed, Revision};
 use crate::open::{CONVERSATION_TTL_DEFAULT, Candidate};
 use crate::risk::{self, OutputKind, Required};
+use crate::source::{Access, Change, Decisions, Source, SourceRegistry, Surface};
+
+/// No registry decisions: every source Ask.
+pub(crate) static ASK_ALL: Decisions = Decisions::new();
 
 /// The protocol test vectors, written by the generator in `vectors.rs`.
 pub(crate) const VECTORS_PATH: &str = concat!(
@@ -155,6 +159,19 @@ pub(crate) fn conversation(i: u8) -> OpenMandate {
     }
 }
 
+/// Tenant 1's owner sets `access` for `source` towards `peer` on the settings page at A2.
+pub(crate) fn settle(reg: &mut SourceRegistry, source: Source, peer: &Address, access: Access) {
+    reg.change(&Change {
+        tenant: &tenant(1),
+        source,
+        peer,
+        access,
+        surface: Surface::Settings,
+        channel: Channel::TelegramMiniApp,
+    })
+    .unwrap();
+}
+
 /// A short rendered template revision to `to`.
 pub(crate) fn cand<'a>(to: &'a Address, t: &'a TemplateId, th: &'a ThreadId) -> Candidate<'a> {
     Candidate {
@@ -169,7 +186,8 @@ pub(crate) fn cand<'a>(to: &'a Address, t: &'a TemplateId, th: &'a ThreadId) -> 
     }
 }
 
-/// Free text `text` with no attachments, sources, hints, tripwire or open mandate.
+/// Free text `text` with no attachments, sources, registry decisions, hints, tripwire or open
+/// mandate.
 pub(crate) fn free(text: &str) -> risk::Draft<'_> {
     risk::Draft {
         text,
@@ -177,6 +195,7 @@ pub(crate) fn free(text: &str) -> risk::Draft<'_> {
         attachments: 0,
         new_recipient: false,
         sources: &[],
+        decisions: &ASK_ALL,
         fuzzy_hint: None,
         tripwire: false,
         open_mandate: false,

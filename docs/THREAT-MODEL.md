@@ -28,7 +28,7 @@ states who attacks what, what we assume, and which property each conformance att
   address is its permanent tenant id, not the key; peers record which key is current for it.
 - AS-4 Consent bot token and webhook secret.
 - AS-5 Security settings: approvers, policies, open mandates, trust levels, peers, shelves,
-  dictionary, canaries, fingerprints.
+  dictionary, canaries, the source registry with its fingerprints and decisions.
 - AS-6 Journal: the append-only record of drafts, decisions, evidence and deliveries.
 - AS-7 Other tenants' data and settings on a hosted gate.
 - AS-8 Owner attention: the owner's ability to read prompts carefully (consent fatigue).
@@ -84,7 +84,7 @@ states who attacks what, what we assume, and which property each conformance att
 - AG-4 Approve in the owner's name: forge or relay Telegram callbacks, initData, evidence or
   mandates; reach an approve path through the agent interface.
 - AG-5 Change security settings without consent: add a peer, raise trust, edit dictionary,
-  canaries, approvers or policies.
+  canaries, approvers or policies, lift a Never decision of the source registry.
 - AG-6 Lower the required level or evade detectors, including by probing the gate as an oracle.
 - AG-7 Smuggle data through gate-composed channels: shelf notes, template fields, attachments,
   open mandates beyond their limits.
@@ -289,6 +289,21 @@ an owner decision at A2 or higher while tripwire mode is inactive.
   `telegram-button`, through `telegram-miniapp` and as an open mandate; a mode change to "draft
   block only" through `telegram-miniapp`; an agent tool call. Result: all refused, tripwire mode
   stays active; a decision through `telegram-miniapp-pin` clears it.
+
+SP-24 Source registry (ADR 0018). Content of a source whose registry decision towards the
+recipient is Never does not leave: no owner approval of the draft and no open mandate releases
+it. One-time codes are Never towards every peer. Never is set or lifted only by an owner decision
+on the settings page at A2 or higher; an approval prompt, an open mandate and the agent cannot
+change it. An Allow towards one peer applies to that peer only. The property covers what a built
+detector catches; `docs/MVP.md` (Source coverage) lists which sources are caught in the MVP and
+by what, which detectors come before the MVP release, and which after it.
+- CA-54 A document source is Never towards bob. The agent revises a draft to bob to quote it and
+  the owner approves the draft's earlier prompt through `telegram-miniapp-pin`; the quote is
+  proposed in a thread under a matching conversation mandate; the owner sets the source to Allow
+  from an approval prompt through `telegram-miniapp-pin`, and on the settings page as an open
+  mandate; an agent tool reaches the registry. Result: the draft is `blocked` and nothing is
+  released, the quote stays blocked under the open mandate, both changes are refused, no such
+  tool exists, and the decision stays Never.
 
 Old attack ideas (ADR 0009). The consent-forgery suite CF-1 to CF-15 of the old gate maps to:
 CF-1, CF-6, CF-9 and CF-13 (agent-written approvals, proof fields, evidence) to CA-1, CA-2,
