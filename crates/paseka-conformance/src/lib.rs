@@ -109,6 +109,7 @@ attacks! {
     "CA-53" "SP-23" "tripwire mode cleared without PIN: through A1, A2, an open mandate, a mode change or the agent" => policy::ca53_clear_tripwire_without_pin;
     "CA-54" "SP-24" "content of a Never source released by an owner approval, an open mandate or a Never lifted outside the settings" => policy::ca54_never_source_leaves;
     "CA-55" "SP-24" "agent under a conversation mandate sends content of an Ask source and of a Never source in that thread" => policy::ca55_conversation_mandate_beyond_allow;
+    "CA-56" "SP-15" "trust above T1 granted to a peer whose SAS comparison was skipped, or the requirement lifted outside consent" => policy::ca56_unverified_peer_above_t1;
 }
 
 /// Runs every attack.

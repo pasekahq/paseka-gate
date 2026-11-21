@@ -13,8 +13,15 @@ use serde_json::Value;
 use crate::channel::Channels;
 use crate::draft::{Draft, RequestSeed, Revision};
 use crate::open::{CONVERSATION_TTL_DEFAULT, Candidate};
+use crate::pairing::{Requirement, Verification, VerificationCheck};
 use crate::risk::{self, OutputKind, Required};
 use crate::source::{Access, Change, Decisions, Source, SourceId, SourceRegistry, Surface};
+
+/// A peer verified by the SAS of a tenant that requires verification: every trust may be granted.
+pub(crate) const VERIFIED: VerificationCheck = VerificationCheck {
+    peer: Verification::Sas,
+    requirement: Requirement::On,
+};
 
 /// No registry decisions: every source Ask.
 pub(crate) static ASK_ALL: Decisions = Decisions::new();

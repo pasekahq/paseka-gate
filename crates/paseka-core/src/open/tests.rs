@@ -3,11 +3,12 @@ use paseka_proto::mandate::Rate;
 
 use super::*;
 use crate::draft::{DraftError, DraftLimit, admit};
+use crate::pairing::{Requirement, Verification};
 use crate::risk::{self, OwnerRules, Required, SourceRead};
 use crate::source::{Access, BuiltIn, Source, SourceKind, SourceRegistry};
 use crate::testkit::{
-    CARD, DOCUMENT, FILES, MAIL, QUOTE, SECRET, address, cand, conversation, drafts, free, peer,
-    settle, t1, tenant, thread, tpl,
+    CARD, DOCUMENT, FILES, MAIL, QUOTE, SECRET, VERIFIED, address, cand, conversation, drafts,
+    free, peer, settle, t1, tenant, thread, tpl,
 };
 
 #[test]
@@ -35,8 +36,8 @@ fn matching_needs_activation_and_stops_at_the_rate() {
         book.matches(&m, &cand(&to, &t, &th), false, 10),
         Err(OpenDenied::Inactive)
     );
-    book.present(&m, 5).unwrap();
-    book.activate(&m).unwrap();
+    book.present(&m, VERIFIED, 5).unwrap();
+    book.activate(&m, VERIFIED).unwrap();
     assert_eq!(book.matches(&m, &cand(&to, &t, &th), false, 10), Ok(()));
     assert_eq!(
         book.matches(&m, &cand(&to, &t, &th), true, 10),
@@ -59,8 +60,8 @@ fn matching_needs_activation_and_stops_at_the_rate() {
 fn revocation_takes_effect_at_once() {
     let (m, to, t, th) = (t1(1), address(2), tpl("availability"), thread(1));
     let mut book = OpenBook::default();
-    book.present(&m, 5).unwrap();
-    book.activate(&m).unwrap();
+    book.present(&m, VERIFIED, 5).unwrap();
+    book.activate(&m, VERIFIED).unwrap();
     book.revoke(&m.tenant, &m.jti);
     assert_eq!(
         book.matches(&m, &cand(&to, &t, &th), false, 10),
@@ -71,10 +72,82 @@ fn revocation_takes_effect_at_once() {
 #[test]
 fn a_second_mandate_waits_until_the_pending_one_is_refused() {
     let mut book = OpenBook::default();
-    book.present(&t1(1), 5).unwrap();
-    assert_eq!(book.present(&t1(2), 6), Err(SlotError::PreviousPending));
+    book.present(&t1(1), VERIFIED, 5).unwrap();
+    assert_eq!(
+        book.present(&t1(2), VERIFIED, 6),
+        Err(SlotError::PreviousPending)
+    );
     book.refuse(&t1(1));
-    assert_eq!(book.present(&t1(2), 7), Ok(()));
+    assert_eq!(book.present(&t1(2), VERIFIED, 7), Ok(()));
+}
+
+/// Tenant 1's open mandate `i` of `trust` to address 2.
+fn of_trust(trust: OpenTrust, i: u8) -> OpenMandate {
+    OpenMandate { trust, ..t1(i) }
+}
+
+/// Above T1 a peer whose SAS comparison was skipped gets no open mandate while the tenant
+/// requires verification; T1 never needs it, and a T0 peer has no open mandate at all.
+#[test]
+fn trust_above_t1_needs_a_verified_peer_while_the_requirement_is_on() {
+    use Requirement::{Off, On};
+    use Verification::{NotVerified, Sas};
+    let trusts = [
+        OpenTrust::T1,
+        OpenTrust::T2,
+        OpenTrust::T3,
+        OpenTrust::Conversation,
+    ];
+    let checks = [(Sas, On), (NotVerified, On), (Sas, Off), (NotVerified, Off)];
+    for trust in trusts {
+        for (peer, requirement) in checks {
+            let check = VerificationCheck { peer, requirement };
+            let refused = trust != OpenTrust::T1 && peer == NotVerified && requirement == On;
+            let want = if refused {
+                Err(SlotError::PeerNotVerified)
+            } else {
+                Ok(())
+            };
+            let m = of_trust(trust, 1);
+            let mut book = OpenBook::default();
+            assert_eq!(
+                book.present(&m, check, 5),
+                want,
+                "present {trust:?} {check:?}"
+            );
+            let mut book = OpenBook::default();
+            book.present(&m, VERIFIED, 5).unwrap();
+            assert_eq!(
+                book.activate(&m, check),
+                want,
+                "activate {trust:?} {check:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_mandate_refused_at_signing_stays_pending_until_the_peer_is_verified() {
+    let m = of_trust(OpenTrust::T2, 1);
+    let unverified = VerificationCheck {
+        peer: Verification::NotVerified,
+        requirement: Requirement::On,
+    };
+    let off = VerificationCheck {
+        requirement: Requirement::Off,
+        ..unverified
+    };
+    let mut book = OpenBook::default();
+    book.present(&m, off, 5).unwrap();
+    assert_eq!(
+        book.activate(&m, unverified),
+        Err(SlotError::PeerNotVerified)
+    );
+    assert_eq!(
+        book.present(&of_trust(OpenTrust::T2, 2), off, 6),
+        Err(SlotError::PreviousPending)
+    );
+    assert_eq!(book.activate(&m, VERIFIED), Ok(()));
 }
 
 #[test]
@@ -113,8 +186,8 @@ fn conversation_trust_has_no_message_limit_but_the_peer_limit_still_applies() {
         private_sources: false,
     };
     let mut book = OpenBook::default();
-    book.present(&m, 0).unwrap();
-    book.activate(&m).unwrap();
+    book.present(&m, VERIFIED, 0).unwrap();
+    book.activate(&m, VERIFIED).unwrap();
     for now in 0..100 {
         book.consume(&m, now);
     }
@@ -159,8 +232,8 @@ impl Ask {
 fn thread_trust_is_active_only_for_a_live_conversation_mandate_on_that_thread_and_peer() {
     let m = conversation(1);
     let mut book = OpenBook::default();
-    book.present(&m, 0).unwrap();
-    book.activate(&m).unwrap();
+    book.present(&m, VERIFIED, 0).unwrap();
+    book.activate(&m, VERIFIED).unwrap();
     let base = Ask {
         book,
         m,
@@ -188,7 +261,7 @@ fn thread_trust_is_active_only_for_a_live_conversation_mandate_on_that_thread_an
             "not signed yet",
             |a| {
                 a.book = OpenBook::default();
-                a.book.present(&a.m, 0).unwrap();
+                a.book.present(&a.m, VERIFIED, 0).unwrap();
             },
             None,
         ),
@@ -244,8 +317,8 @@ fn a_conversation_mandate_releases_only_what_the_registry_allows_towards_the_pee
         let mut m = conversation(1);
         m.constraints.private_sources = private;
         let mut book = OpenBook::default();
-        book.present(&m, 0).unwrap();
-        book.activate(&m).unwrap();
+        book.present(&m, VERIFIED, 0).unwrap();
+        book.activate(&m, VERIFIED).unwrap();
         let ms = std::slice::from_ref(&m);
         assert!(thread_trust(&book, ms, &tenant(1), &to, &th, false, 10).active);
         for (source, text, sources, ask_floor) in hits {

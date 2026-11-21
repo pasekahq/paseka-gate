@@ -18,7 +18,8 @@ use serde_json::Value;
 use crate::draft::{DRAFT_LIFETIME_DEFAULT, DRAFT_LIFETIME_RANGE, draft_expires};
 use crate::envelope::seal;
 use crate::hash::{
-    Release, approval_challenge, content_sha256, key_change_sas, release_digest, sas, sha256,
+    Release, SasParty, approval_challenge, content_sha256, key_change_sas, release_digest, sas,
+    sha256,
 };
 use crate::mandate::{CLOSED_TTL_SECS, issue};
 use crate::peer::{Grace, key_revoke_data, key_rotate_data, key_sha256};
@@ -91,7 +92,9 @@ struct ChallengeVector {
 
 #[derive(Serialize)]
 struct SasInput {
+    inviter: Address,
     inviter_key: KeyId,
+    invitee: Address,
     invitee_key: KeyId,
     code: Nonce,
 }
@@ -322,13 +325,26 @@ fn generate() -> Vectors {
         ),
     };
     let code = b64u_nonce(b"defghijklmnopqrs");
+    let input = SasInput {
+        inviter: alice.address(),
+        inviter_key: alice.kid(),
+        invitee: bob.address(),
+        invitee_key: bob.kid(),
+        code: code.clone(),
+    };
     let sas_vector = SasVector {
-        sas: sas(&alice.kid(), &bob.kid(), &code),
-        input: SasInput {
-            inviter_key: alice.kid(),
-            invitee_key: bob.kid(),
-            code: code.clone(),
-        },
+        sas: sas(
+            SasParty {
+                address: &input.inviter,
+                key: &input.inviter_key,
+            },
+            SasParty {
+                address: &input.invitee,
+                key: &input.invitee_key,
+            },
+            &code,
+        ),
+        input,
     };
     let key_change = KeyChangeSasVector {
         sas: key_change_sas(

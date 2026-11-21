@@ -95,12 +95,24 @@ pub fn approval_challenge(
     Sha256(h.finalize().into())
 }
 
-/// Short authentication string shown to both owners at pairing (PROTOCOL §11): six digits.
-pub fn sas(inviter: &KeyId, guest: &KeyId, code: &Nonce) -> String {
+/// One side of a pairing as the short authentication string binds it: address and key.
+#[derive(Debug, Clone, Copy)]
+pub struct SasParty<'a> {
+    /// Tenant address.
+    pub address: &'a Address,
+    /// Key id pinned for it at pairing.
+    pub key: &'a KeyId,
+}
+
+/// Short authentication string offered to both owners at pairing (PROTOCOL §11): six digits over
+/// the inviter, the guest (invitee) and the invite code.
+pub fn sas(inviter: SasParty<'_>, guest: SasParty<'_>, code: &Nonce) -> String {
     let mut h = sha2::Sha256::new();
-    frame(&mut h, b"paseka/sas/v1");
-    frame(&mut h, inviter.as_str().as_bytes());
-    frame(&mut h, guest.as_str().as_bytes());
+    frame(&mut h, b"paseka/sas/v2");
+    for p in [inviter, guest] {
+        frame(&mut h, p.address.as_str().as_bytes());
+        frame(&mut h, p.key.as_str().as_bytes());
+    }
     frame(&mut h, code.as_str().as_bytes());
     six_digits(h)
 }
@@ -171,7 +183,7 @@ mod tests {
     }
 
     #[test]
-    fn approval_challenge_and_sas_match_the_protocol_vectors() {
+    fn approval_challenge_matches_the_protocol_vectors() {
         let all = vectors();
         for v in all["approval_challenge"].as_array().unwrap() {
             let i = &v["input"];
@@ -184,10 +196,36 @@ mod tests {
             );
             assert_eq!(got, s::<Sha256>(&v["challenge"]));
         }
-        for v in all["sas"].as_array().unwrap() {
+    }
+
+    #[test]
+    fn pairing_sas_matches_the_protocol_vectors_and_binds_every_input() {
+        let all = vectors();
+        let cases = all["sas"].as_array().unwrap();
+        assert_eq!(cases.len(), 1);
+        for v in cases {
             let i = &v["input"];
-            let got = sas(&s(&i["inviter_key"]), &s(&i["invitee_key"]), &s(&i["code"]));
-            assert_eq!(got, s::<String>(&v["sas"]));
+            let (a, b): (Address, Address) = (s(&i["inviter"]), s(&i["invitee"]));
+            let (ka, kb): (KeyId, KeyId) = (s(&i["inviter_key"]), s(&i["invitee_key"]));
+            let code: Nonce = s(&i["code"]);
+            let party = |address, key| SasParty { address, key };
+            let want: String = s(&v["sas"]);
+            assert_eq!(sas(party(&a, &ka), party(&b, &kb), &code), want);
+            let other: Address = s(&all["signing_keys"]["carol"]["address"]);
+            let changed = [
+                sas(party(&b, &kb), party(&a, &ka), &code),
+                sas(party(&other, &ka), party(&b, &kb), &code),
+                sas(party(&a, &ka), party(&other, &kb), &code),
+                sas(party(&a, &kb), party(&b, &ka), &code),
+                sas(
+                    party(&a, &ka),
+                    party(&b, &kb),
+                    &s(&all["approval_challenge"][0]["input"]["nonce"]),
+                ),
+            ];
+            for (n, got) in changed.iter().enumerate() {
+                assert_ne!(got, &want, "change {n}");
+            }
         }
     }
 

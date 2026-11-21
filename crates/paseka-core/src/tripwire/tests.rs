@@ -5,7 +5,8 @@ use crate::channel::Selection;
 use crate::open::{OpenBook, OpenDenied};
 use crate::risk::{self, OwnerRules, Required};
 use crate::testkit::{
-    address, awaiting, cand, draft_id, free, mvp_channels, peer, seed, t1, tenant, thread, tpl,
+    VERIFIED, address, awaiting, cand, draft_id, free, mvp_channels, peer, seed, t1, tenant,
+    thread, tpl,
 };
 
 const CANARY: &str = "PASEKA-CANARY-7f3a9c";
@@ -198,8 +199,8 @@ fn full_alarm_raises_every_draft_to_the_pin_channel_and_stops_open_mandates() {
     let mut book = TripwireBook::default();
     let (m, to, tp, th) = (t1(1), address(2), tpl("availability"), thread(1));
     let mut open = OpenBook::default();
-    open.present(&m, 5).unwrap();
-    open.activate(&m).unwrap();
+    open.present(&m, VERIFIED, 5).unwrap();
+    open.activate(&m, VERIFIED).unwrap();
     hit(&mut book, 1, 1, 10);
     let on = book.in_effect(&tenant(1));
     assert_eq!(
@@ -244,8 +245,8 @@ fn draft_block_only_blocks_the_draft_and_leaves_the_rest_alone() {
     .unwrap();
     let (m, to, tp, th) = (t1(1), address(2), tpl("availability"), thread(1));
     let mut open = OpenBook::default();
-    open.present(&m, 5).unwrap();
-    open.activate(&m).unwrap();
+    open.present(&m, VERIFIED, 5).unwrap();
+    open.activate(&m, VERIFIED).unwrap();
     assert_eq!(hit(&mut book, 1, 1, 10).unwrap().alarm, Alarm::DraftOnly);
     let on = book.in_effect(&tenant(1));
     assert!(!on);

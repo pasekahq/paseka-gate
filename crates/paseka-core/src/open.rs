@@ -12,6 +12,7 @@ use paseka_proto::{
     Address, Level, MandateId, OpenTrust, ShelfId, TemplateId, TenantId, ThreadId, UnixSecs,
 };
 
+use crate::pairing::VerificationCheck;
 use crate::tenant::TenantMap;
 
 const HOUR: u64 = 3600;
@@ -119,13 +120,15 @@ struct Slot {
     pending: Option<(MandateId, UnixSecs)>,
 }
 
-/// A refused presentation (AP2 rule, PROTOCOL §8.3).
+/// A refused presentation or signature (AP2 rule, PROTOCOL §8.3; verification rule, §11).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SlotError {
     /// A pending open mandate for this peer and trust is still live.
     PreviousPending,
     /// No such pending mandate.
     NotPending,
+    /// The trust is above T1, the peer is not verified and the tenant requires verification.
+    PeerNotVerified,
 }
 
 fn trust_key(t: OpenTrust) -> &'static str {
@@ -143,11 +146,19 @@ fn live(x: Option<&(MandateId, UnixSecs)>, now: UnixSecs) -> bool {
 
 impl OpenBook {
     /// Presents `m` to the owner. Refused while a previous one for the same peer and trust is
-    /// pending.
+    /// pending, or when `check` of the peer `m.to` does not allow its trust.
     ///
     /// # Errors
-    /// [`SlotError::PreviousPending`].
-    pub fn present(&mut self, m: &OpenMandate, now: UnixSecs) -> Result<(), SlotError> {
+    /// [`SlotError::PeerNotVerified`], then [`SlotError::PreviousPending`].
+    pub fn present(
+        &mut self,
+        m: &OpenMandate,
+        check: VerificationCheck,
+        now: UnixSecs,
+    ) -> Result<(), SlotError> {
+        if !check.allows(m.trust) {
+            return Err(SlotError::PeerNotVerified);
+        }
         let slot = self
             .slots
             .entry(&m.tenant, (m.to.clone(), trust_key(m.trust)));
@@ -158,11 +169,16 @@ impl OpenBook {
         Ok(())
     }
 
-    /// The owner signed the pending `m`; it replaces the active one.
+    /// The owner signed the pending `m`; it replaces the active one. `check` of the peer `m.to`
+    /// is taken at signing time, so a requirement turned on since the presentation applies.
     ///
     /// # Errors
-    /// [`SlotError::NotPending`] unless `m` is the pending mandate.
-    pub fn activate(&mut self, m: &OpenMandate) -> Result<(), SlotError> {
+    /// [`SlotError::PeerNotVerified`] when `check` does not allow the trust, the mandate staying
+    /// pending; [`SlotError::NotPending`] unless `m` is the pending mandate.
+    pub fn activate(&mut self, m: &OpenMandate, check: VerificationCheck) -> Result<(), SlotError> {
+        if !check.allows(m.trust) {
+            return Err(SlotError::PeerNotVerified);
+        }
         let slot = self
             .slots
             .get_mut(&m.tenant, &(m.to.clone(), trust_key(m.trust)))
