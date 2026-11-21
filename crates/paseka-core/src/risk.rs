@@ -223,7 +223,7 @@ pub struct Draft<'a> {
     pub kind: OutputKind,
     /// Number of attachments.
     pub attachments: usize,
-    /// Text of the attachments, searched for vault secrets.
+    /// Text of the attachments, searched for vault secrets and canaries.
     pub attachment_text: &'a [&'a str],
     /// Whether the recipient never received anything before.
     pub new_recipient: bool,
@@ -250,7 +250,7 @@ pub fn assess(rules: &OwnerRules, d: &Draft<'_>) -> Assessment {
         required: Required::Level(base),
         flags: Vec::new(),
         allowed: Vec::new(),
-        canaries: canary_hits(rules, d.text),
+        canaries: canary_hits(rules, d.text, d.attachment_text),
     };
     for f in structural(d.text)
         .into_iter()
@@ -660,11 +660,26 @@ fn dictionary_hits(rules: &OwnerRules, text: &str) -> Vec<Flag> {
     out
 }
 
-/// Canary search over the text and over decoded base64/hex runs, ignoring case and separators.
-fn canary_hits(rules: &OwnerRules, text: &str) -> Vec<CanaryId> {
+/// Canary search over the body, the attachment texts and their decoded base64/hex runs, ignoring
+/// case and separators.
+fn canary_hits(rules: &OwnerRules, body: &str, attachment_text: &[&str]) -> Vec<CanaryId> {
     if rules.canaries.is_empty() {
         return Vec::new();
     }
+    let haystacks: Vec<String> = std::iter::once(body)
+        .chain(attachment_text.iter().copied())
+        .flat_map(canary_haystacks)
+        .collect();
+    rules
+        .canaries
+        .iter()
+        .filter(|(_, c)| haystacks.iter().any(|h| h.contains(c.as_str())))
+        .map(|(id, _)| *id)
+        .collect()
+}
+
+/// `text` and its decoded base64/hex runs, normalised.
+fn canary_haystacks(text: &str) -> Vec<String> {
     let mut haystacks = vec![normalise(text)];
     for (s, e) in runs(text, is_b64) {
         let run = text[s..e].trim_end_matches('=');
@@ -682,12 +697,7 @@ fn canary_hits(rules: &OwnerRules, text: &str) -> Vec<CanaryId> {
             haystacks.push(normalise(&String::from_utf8_lossy(&bytes)));
         }
     }
-    rules
-        .canaries
-        .iter()
-        .filter(|(_, c)| haystacks.iter().any(|h| h.contains(c.as_str())))
-        .map(|(id, _)| *id)
-        .collect()
+    haystacks
 }
 
 fn shingles(text: &str) -> BTreeSet<u64> {

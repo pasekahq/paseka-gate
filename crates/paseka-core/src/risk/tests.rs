@@ -184,6 +184,31 @@ fn canary_blocks_even_when_obfuscated() {
 }
 
 #[test]
+fn a_canary_in_attachment_text_blocks_like_one_in_the_body() {
+    let mut r = OwnerRules::default();
+    r.add_canary(CanaryId(7), "PASEKA-CANARY-7f3a9c").unwrap();
+    for attachment_text in [
+        &["notes", "fyi PASEKA-CANARY-7f3a9c"][..],
+        &["blob UEFTRUtBLUNBTkFSWS03ZjNhOWM"][..],
+    ] {
+        let a = assess(
+            &r,
+            &Draft {
+                attachment_text,
+                ..free("see the attached file")
+            },
+        );
+        assert_eq!(a.required, Required::Block, "{attachment_text:?}");
+        assert_eq!(a.canaries, vec![CanaryId(7)], "{attachment_text:?}");
+    }
+    let clean = Draft {
+        attachment_text: &["nothing here"],
+        ..free("see the attached file")
+    };
+    assert_eq!(assess(&r, &clean).canaries, vec![]);
+}
+
+#[test]
 fn every_matching_canary_is_named_by_id_and_no_flag_carries_its_marker() {
     let mut r = OwnerRules::default();
     r.add_canary(CanaryId(1), "PASEKA-CANARY-7f3a9c").unwrap();
