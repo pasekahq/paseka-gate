@@ -102,6 +102,17 @@ pub enum DraftError {
     InvalidState(DraftState),
     /// `revision_conflict`.
     RevisionConflict,
+    /// `rate_limited`; the limit is for the owner, never for the agent.
+    RateLimited(DraftLimit),
+}
+
+/// A draft limit of PROTOCOL §5.3 that refuses a new draft.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DraftLimit {
+    /// [`PENDING_DRAFTS_PER_TENANT`] drafts already await consent.
+    PendingPerTenant,
+    /// [`DRAFTS_PER_PEER_PER_HOUR`] drafts to this peer within the last hour.
+    PerPeerHour,
 }
 
 /// A refused owner decision (PROTOCOL §7.1). The draft is unchanged.
@@ -159,13 +170,66 @@ pub struct Approved {
     pub release_digest: Sha256,
 }
 
-/// Prompt TTL bounds and default (PROTOCOL §7.1).
+/// Default prompt TTL (PROTOCOL §7.1, §14).
 pub const PROMPT_TTL_DEFAULT: u64 = 3600;
+/// Allowed owner settings of the prompt TTL (PROTOCOL §7.1, §14).
+pub const PROMPT_TTL_RANGE: RangeInclusive<u64> = 300..=86_400;
 
-/// Default draft lifetime (PROTOCOL §4): 12 h.
-pub const DRAFT_LIFETIME_DEFAULT: u64 = 12 * 3600;
-/// Allowed owner settings of the draft lifetime (PROTOCOL §4): 5 min to 7 days.
+/// Default draft lifetime (PROTOCOL §4, §14).
+pub const DRAFT_LIFETIME_DEFAULT: u64 = 12 * HOUR;
+/// Allowed owner settings of the draft lifetime (PROTOCOL §4, §14).
 pub const DRAFT_LIFETIME_RANGE: RangeInclusive<u64> = 300..=7 * 86_400;
+
+/// Most drafts of one tenant in `awaiting_consent` (PROTOCOL §5.3, §14).
+pub const PENDING_DRAFTS_PER_TENANT: usize = 50;
+/// Most drafts the agent creates to one peer within any rolling hour (PROTOCOL §5.3, §14).
+pub const DRAFTS_PER_PEER_PER_HOUR: usize = 30;
+
+const HOUR: u64 = 3600;
+
+/// A prompt TTL setting outside [`PROMPT_TTL_RANGE`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PromptTtlOutOfRange(pub u64);
+
+/// The owner's prompt TTL setting `ttl`, checked against [`PROMPT_TTL_RANGE`].
+///
+/// # Errors
+/// [`PromptTtlOutOfRange`] unless `ttl` is in [`PROMPT_TTL_RANGE`].
+pub fn prompt_ttl(ttl: u64) -> Result<u64, PromptTtlOutOfRange> {
+    if PROMPT_TTL_RANGE.contains(&ttl) {
+        Ok(ttl)
+    } else {
+        Err(PromptTtlOutOfRange(ttl))
+    }
+}
+
+/// Admits a new draft of `tenant` to `to` at `now` (PROTOCOL §5.3). `drafts` holds at least the
+/// tenant's drafts awaiting consent and those created within the last hour; drafts of other
+/// tenants are ignored. The caller runs it before evaluation, so a refusal reveals no level.
+///
+/// # Errors
+/// [`DraftError::RateLimited`] naming the first limit reached.
+pub fn admit(
+    drafts: &[Draft],
+    tenant: &TenantId,
+    to: &PeerHandle,
+    now: UnixSecs,
+) -> Result<(), DraftError> {
+    let own = || drafts.iter().filter(|d| &d.tenant == tenant);
+    let pending = own()
+        .filter(|d| d.state == DraftState::AwaitingConsent)
+        .count();
+    if pending >= PENDING_DRAFTS_PER_TENANT {
+        return Err(DraftError::RateLimited(DraftLimit::PendingPerTenant));
+    }
+    let to_peer = own()
+        .filter(|d| &d.to == to && d.created_at.saturating_add(HOUR) > now)
+        .count();
+    if to_peer >= DRAFTS_PER_PEER_PER_HOUR {
+        return Err(DraftError::RateLimited(DraftLimit::PerPeerHour));
+    }
+    Ok(())
+}
 
 /// A draft lifetime setting outside [`DRAFT_LIFETIME_RANGE`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -401,7 +465,7 @@ impl Draft {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testkit::{awaiting, mvp_channels, nonce, rev, seed, tenant};
+    use crate::testkit::{awaiting, drafts, mvp_channels, nonce, peer, rev, seed, tenant};
 
     fn attempt(d: &Draft, channel: Channel) -> DecisionAttempt<'_> {
         let r = d.request.as_ref().unwrap();
@@ -572,6 +636,52 @@ mod tests {
         assert!(draft_expires(1000, DRAFT_LIFETIME_DEFAULT).is_ok());
         for bad in [0, lo - 1, hi + 1] {
             assert_eq!(draft_expires(1000, bad), Err(LifetimeOutOfRange(bad)));
+        }
+    }
+
+    #[test]
+    fn the_prompt_ttl_setting_is_bounded() {
+        let (lo, hi) = (*PROMPT_TTL_RANGE.start(), *PROMPT_TTL_RANGE.end());
+        for ttl in [lo, PROMPT_TTL_DEFAULT, hi] {
+            assert_eq!(prompt_ttl(ttl), Ok(ttl));
+        }
+        for bad in [0, lo - 1, hi + 1] {
+            assert_eq!(prompt_ttl(bad), Err(PromptTtlOutOfRange(bad)));
+        }
+    }
+
+    #[test]
+    fn the_pending_limit_counts_only_the_tenants_drafts_awaiting_consent() {
+        use DraftState::{AwaitingConsent, Released};
+        let refused = Err(DraftError::RateLimited(DraftLimit::PendingPerTenant));
+        let cases: [(Vec<Draft>, Result<(), DraftError>); 4] = [
+            (drafts(1, 49, "carol", 0, AwaitingConsent), Ok(())),
+            (drafts(1, 50, "carol", 0, AwaitingConsent), refused),
+            (drafts(2, 50, "carol", 0, AwaitingConsent), Ok(())),
+            (drafts(1, 50, "carol", 0, Released), Ok(())),
+        ];
+        for (i, (ds, want)) in cases.into_iter().enumerate() {
+            assert_eq!(admit(&ds, &tenant(1), &peer("bob"), 10), want, "case {i}");
+        }
+    }
+
+    #[test]
+    fn the_peer_limit_counts_drafts_to_that_peer_in_a_sliding_hour() {
+        use DraftState::Released;
+        let refused = Err(DraftError::RateLimited(DraftLimit::PerPeerHour));
+        let mut thirty = drafts(1, 1, "bob", 0, Released);
+        thirty.extend(drafts(1, 29, "bob", 100, Released));
+        let cases: [(Vec<Draft>, UnixSecs, Result<(), DraftError>); 7] = [
+            (drafts(1, 29, "bob", 100, Released), 200, Ok(())),
+            (thirty.clone(), 200, refused),
+            (thirty.clone(), 3599, refused),
+            (thirty.clone(), 3600, Ok(())),
+            (thirty, 3700, Ok(())),
+            (drafts(1, 30, "carol", 100, Released), 200, Ok(())),
+            (drafts(2, 30, "bob", 100, Released), 200, Ok(())),
+        ];
+        for (i, (ds, now, want)) in cases.into_iter().enumerate() {
+            assert_eq!(admit(&ds, &tenant(1), &peer("bob"), now), want, "case {i}");
         }
     }
 

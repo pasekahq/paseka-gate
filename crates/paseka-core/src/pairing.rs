@@ -1,12 +1,34 @@
-//! Pairing (PROTOCOL §11): the invitee's check of a pair accept against the pair URI.
+//! Pairing (PROTOCOL §11): invite lifetime and the invitee's check of a pair accept against the
+//! pair URI.
 
 use ed25519_dalek::VerifyingKey;
 use paseka_proto::jws::Typ;
 use paseka_proto::pairing::PairAccept;
-use paseka_proto::{Address, KeyId};
+use paseka_proto::{Address, KeyId, UnixSecs};
 
 use crate::hash::sha256;
 use crate::token::{self, TokenError};
+
+/// Default invite lifetime (PROTOCOL §11 step 1, §14).
+pub const INVITE_TTL_DEFAULT: u64 = 86_400;
+/// Longest invite lifetime the inviter may choose (PROTOCOL §11 step 1, §14).
+pub const INVITE_TTL_MAX: u64 = 7 * 86_400;
+
+/// An invite lifetime above [`INVITE_TTL_MAX`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InviteTtlTooLong(pub u64);
+
+/// `expires_at` of an invite created at `created_at` with lifetime `ttl`.
+///
+/// # Errors
+/// [`InviteTtlTooLong`] when `ttl` exceeds [`INVITE_TTL_MAX`].
+pub fn invite_expires(created_at: UnixSecs, ttl: u64) -> Result<UnixSecs, InviteTtlTooLong> {
+    if ttl <= INVITE_TTL_MAX {
+        Ok(created_at.saturating_add(ttl))
+    } else {
+        Err(InviteTtlTooLong(ttl))
+    }
+}
 
 /// What the invitee expects of the accept: the inviter named by the pair URI and its own request.
 #[derive(Debug, Clone, Copy)]
@@ -125,6 +147,19 @@ mod tests {
         assert_eq!(
             verify_accept(accept, &other_request),
             Err(AcceptInvalid::Request)
+        );
+    }
+
+    #[test]
+    fn an_invite_lives_at_most_seven_days() {
+        assert_eq!(invite_expires(1000, INVITE_TTL_DEFAULT), Ok(1000 + 86_400));
+        assert_eq!(
+            invite_expires(1000, INVITE_TTL_MAX),
+            Ok(1000 + INVITE_TTL_MAX)
+        );
+        assert_eq!(
+            invite_expires(1000, INVITE_TTL_MAX + 1),
+            Err(InviteTtlTooLong(INVITE_TTL_MAX + 1))
         );
     }
 }

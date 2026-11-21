@@ -1,0 +1,25 @@
+{
+  "v": 1,
+  "kind": "open",
+  "iss": "t_01JD0000000000000000000001",
+  "tenant": "t_01JD0000000000000000000001",
+  "to": "t_01JD0000000000000000000002",
+  "jti": "md_01JD0000000000000000000002",
+  "iat": 1794268800,
+  "nbf": 1794268800,
+  "exp": 1794270600,
+  "trust": "T1",
+  "signed_at_level": "A2",
+  "constraints": {
+    "templates": [
+      "availability"
+    ],
+    "max_len": 500,
+    "rate": {}
+  },
+  "proof": {
+    "channel": "telegram-miniapp",
+    "approved_at": 1794268800,
+    "evidence_sha256": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+  }
+}

@@ -12,7 +12,7 @@ use serde_json::Value;
 
 use crate::channel::Channels;
 use crate::draft::{Draft, RequestSeed, Revision};
-use crate::open::Candidate;
+use crate::open::{CONVERSATION_TTL_DEFAULT, Candidate};
 use crate::risk::{self, OutputKind, Required};
 
 /// The protocol test vectors, written by the generator in `vectors.rs`.
@@ -137,6 +137,24 @@ pub(crate) fn t1(i: u8) -> OpenMandate {
     }
 }
 
+/// Tenant 1's conversation open mandate `i` to address 2 in thread 1: no rate limit, from 0 for
+/// the default duration.
+pub(crate) fn conversation(i: u8) -> OpenMandate {
+    let t = t1(i);
+    OpenMandate {
+        exp: CONVERSATION_TTL_DEFAULT,
+        trust: OpenTrust::Conversation,
+        constraints: Constraints {
+            templates: vec![],
+            max_len: None,
+            rate: Rate::default(),
+            thread: Some(thread(1)),
+            ..t.constraints
+        },
+        ..t
+    }
+}
+
 /// A short rendered template revision to `to`.
 pub(crate) fn cand<'a>(to: &'a Address, t: &'a TemplateId, th: &'a ThreadId) -> Candidate<'a> {
     Candidate {
@@ -173,6 +191,31 @@ pub(crate) fn rev(body: &str) -> Revision {
         release_digest: crate::hash::content_sha256(body),
         by_owner: false,
     }
+}
+
+/// `n` drafts of tenant `t` to `to`, created at `created_at`, in `state`.
+pub(crate) fn drafts(
+    t: u8,
+    n: u8,
+    to: &str,
+    created_at: UnixSecs,
+    state: DraftState,
+) -> Vec<Draft> {
+    (0..n)
+        .map(|d| Draft {
+            to: peer(to),
+            state,
+            ..awaiting(
+                t,
+                d,
+                "hi",
+                created_at,
+                created_at + 1000,
+                Required::Level(Level::A1),
+                created_at,
+            )
+        })
+        .collect()
 }
 
 /// Tenant `t`'s free-text draft `d` to bob in thread 1, revision 1 of `body`, alive from

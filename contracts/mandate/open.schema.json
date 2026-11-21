@@ -106,8 +106,7 @@
               "type": "integer",
               "minimum": 1
             }
-          },
-          "minProperties": 1
+          }
         },
         "topics": {
           "type": "array",
@@ -168,7 +167,12 @@
             "required": [
               "templates",
               "max_len"
-            ]
+            ],
+            "properties": {
+              "rate": {
+                "minProperties": 1
+              }
+            }
           }
         }
       }
@@ -190,6 +194,9 @@
             "properties": {
               "attachments": {
                 "const": "shelf"
+              },
+              "rate": {
+                "minProperties": 1
               }
             }
           }
@@ -235,14 +242,7 @@
           "constraints": {
             "required": [
               "thread"
-            ],
-            "properties": {
-              "rate": {
-                "required": [
-                  "max_messages"
-                ]
-              }
-            }
+            ]
           }
         }
       }

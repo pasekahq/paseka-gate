@@ -11,6 +11,7 @@ pub mod channel;
 pub mod draft;
 pub mod envelope;
 pub mod hash;
+pub mod initdata;
 pub mod mandate;
 pub mod open;
 pub mod pairing;
@@ -23,6 +24,8 @@ pub mod tenant;
 pub mod token;
 pub mod tripwire;
 
+#[cfg(test)]
+mod defaults;
 #[cfg(test)]
 pub(crate) mod testkit;
 #[cfg(test)]

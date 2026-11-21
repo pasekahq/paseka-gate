@@ -72,11 +72,11 @@ const WRITER_ONLY: &[(&str, &str)] = &[
         "core::open::check_shape",
     ),
     (
-        "mandate/open/invalid/empty-rate.json",
+        "mandate/open/invalid/signed-at-a1.json",
         "core::open::check_shape",
     ),
     (
-        "mandate/open/invalid/signed-at-a1.json",
+        "mandate/open/invalid/t1-empty-rate.json",
         "core::open::check_shape",
     ),
     (
