@@ -67,12 +67,16 @@ Each item is done when the stated check passes. "CA" means a named conformance a
 ## Milestones (dependency order)
 
 1. M1 Core: `paseka-proto` types matching `contracts/`; `paseka-core` canonical hash, mandate
-   verification, risk levels, trust and shelf checks, tenant types; conformance harness with the
-   core attacks. Covers d1, d3, d5, d6, d9, d10, d12, d13, d15.
+   verification, risk levels, trust and shelf checks, tenant types, the PIN kind and the PIN
+   attempt limit; conformance harness with the core attacks. M1 stores no PIN. Covers d1, d3,
+   d5, d6, d9, d10, d12, d13, d15.
 2. M2 Local gate: storage (rusqlite), MCP server and HTTP API for the agent, journal, policy
    engine. Covers d4, d11.
 3. M3 Consent: consent bot (A1), Mini App (A2) with Ed25519 `initData` verification, first-run
-   ceremony. Covers d7, d8, d16.
+   ceremony. The A2+ PIN channel (PROTOCOL §7.5): the owner sets the PIN at the first-run
+   ceremony; the Argon2id verifier lands here, with the ADR for its dependency (size, tree cost,
+   budget measurement); PIN change through consent with the old PIN and through the local CLI;
+   the attempt limit wired to the owner notice. Covers d7, d8, d16.
 4. M4 Peers: identity keys, pairing by deep link, signed envelopes, retry, behind Caddy; key
    change and revocation in the gate and Mini App (PROTOCOL §10.6 to §10.8): the owner starts
    them through consent with PIN or password, the gate sends `key.rotate` or `key.revoke` to
