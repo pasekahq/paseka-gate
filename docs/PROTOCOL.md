@@ -1171,6 +1171,35 @@ Invariants:
   journal; never its PIN pepper or verifier (§7.5). Peers keep working because the address stays
   the same; only the endpoint changes, which the gate announces through a later event type.
 
+### 12.1 Local names in the CLI
+
+The CLI on the gate host names a tenant by a local name, never by its address.
+
+- `paseka init` creates a tenant: it asks at the terminal for the local name, assigns the address
+  (§2) and stores the mapping name to address on the gate host, in the gate's data directory,
+  owned by the gate's unix user (TB-5).
+- A name matches `[a-z0-9][a-z0-9_-]{0,31}`, so it never has the form of an address. It is unique
+  on the gate: `init` refuses a name that another tenant of the gate holds.
+- `paseka tenant rename <old> <new>`, run as the gate's unix user, changes a name under the same
+  rules and frees the old one. The address, keys, peers and pairings stay unchanged.
+- Every command that acts for one tenant takes the local name as `--tenant <name>` and never an
+  address. On a gate with exactly one tenant `--tenant` may be omitted and the command acts for
+  that tenant. On a gate with several, a command without `--tenant`, or with a name the gate does
+  not hold, fails with a usage error (exit 2) that lists the local names of the gate's tenants.
+- `paseka mcp` takes no `--tenant`: the agent token selects the tenant (§5.1, TI-2).
+- The name never leaves the gate host. No envelope, receipt, mandate, pairing message, pair URI,
+  evidence or other data a peer receives carries it; peers know the tenant only by its address.
+  Export (TI-7) does not carry the name either; the import asks for a local name on the new gate,
+  as `init` does.
+
+```sh
+sudo -u paseka paseka init --bot-token-stdin
+sudo -u paseka paseka status
+sudo -u paseka paseka status --tenant bob
+```
+
+The second line is the one-tenant form; the third names the tenant on a gate with several.
+
 ## 13. Versioning
 
 Contract evolution and reader tolerance (unknown fields ignored, informational enums with an

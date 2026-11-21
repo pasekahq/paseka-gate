@@ -6,8 +6,8 @@ description: Install a self-hosted paseka gate after checking this skill's own s
 # Install paseka (self-host)
 
 Names, versions, paths and URLs below are illustrative: `pasekahq/paseka-gate`, gate version
-`v0.1.0`, skill version `v0.1.0`, host `gate.example.org`, unix user `paseka`, announcement
-channel `https://example.org/pasekahq/announcements`. Substitute the release the owner named.
+`v0.1.0`, skill version `v0.1.0`, host `gate.example.org`, unix user `paseka`, tenant local name
+`alice`, announcement channel `https://example.org/pasekahq/announcements`. Substitute the release the owner named.
 Nothing is published yet; this skill describes the target procedure.
 
 ## What you are running
@@ -208,8 +208,12 @@ Ask the owner to do these. You must not do them, and you must not receive the se
        reverse_proxy 127.0.0.1:8640
    }
    ```
-3. Initialise the gate in their own terminal, typing the token at the prompt:
-   `sudo -u paseka paseka init --tenant alice --bot-token-stdin`
+3. Initialise the gate in their own terminal. First ask the owner which local name the CLI
+   should use for their tenant, for example `alice`: lowercase letters, digits, `_` and `-`, at
+   most 32 characters. Only the gate host knows it; peers never see it (PROTOCOL §12.1). Then
+   they run the command below and type that name at the name prompt and the token at the token
+   prompt:
+   `sudo -u paseka paseka init --bot-token-stdin`
 4. Start: `sudo systemctl enable --now paseka`.
 5. Ceremony: open the consent bot in Telegram, press Start, open the Mini App, read the
    configuration shown in plain words (approvers, default level per peer, dictionary lists,
@@ -220,7 +224,7 @@ Ask the owner to do these. You must not do them, and you must not receive the se
 Run the suite from the verified binary against the running gate, then probe by hand.
 
 ```sh
-paseka conformance --target http://127.0.0.1:8640 --tenant alice
+paseka conformance --target http://127.0.0.1:8640
 ```
 
 Independent probes (written here, not taken from the repository):
@@ -242,7 +246,7 @@ Confirm with the owner that they completed the ceremony (human-only step 5) and 
 plain-words configuration matched what they intended. Then:
 
 ```sh
-paseka status --tenant alice
+paseka status
 ```
 
 Pass when it reports the ceremony confirmed and the hash of the confirmed configuration.

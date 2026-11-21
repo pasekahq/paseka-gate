@@ -53,6 +53,7 @@ Each item is done when the stated check passes. "CA" means a named conformance a
 | d20 | An agent following the released install skill artifact on a clean host reaches a running gate with steps 0 to 5 passed and a self-check reporting green. | Manual dry run by the owner with one agent, recorded in the release notes. |
 | d21 | Alice's agent (Claude Code, L2 recipe) asks Bob's agent (ulei or Hermes) a question; Bob's approval prompt shows the level recorded for Bob's agent; Bob approves in the Mini App; Alice's agent reads the answer from its inbox. | End-to-end manual scenario on two test gates, example.org names. |
 | d22 | `/version` reports the build hash; a hosted tenant can export its journal and migrate to a self-host gate with one command. | Integration test of `export` and `import`. |
+| d23 | The CLI names tenants only by local names (PROTOCOL §12.1): `paseka init` asks for the name and stores the mapping to the address; with one tenant `--tenant` may be omitted; with several, a missing or unknown `--tenant` exits 2 and lists the names; no message a peer receives carries the name. | `crates/paseka/tests/cli.rs`: `init` with a name, a taken or malformed name refused, an address as `--tenant` refused, `tenant rename`, commands with and without `--tenant` on one and on two tenants; the two-gate test of d14 finds no local name in envelopes or pairing messages. |
 
 ## Source coverage
 
@@ -98,7 +99,10 @@ get the S2 flag, which is not a registry source.
    default by deployment and the PIN attempt limit; conformance harness with the core attacks.
    M1 stores no PIN. Covers d1, d3, d5, d6, d9, d10, d12, d13, d15.
 2. M2 Local gate: storage (rusqlite), MCP server and HTTP API for the agent, journal, policy
-   engine, attachment bytes with image metadata removal (PROTOCOL §3.1). Covers d4, d11.
+   engine, attachment bytes with image metadata removal (PROTOCOL §3.1). CLI tenant names
+   (PROTOCOL §12.1): the name prompt in `paseka init`, the mapping from name to address on the gate
+   host, `paseka tenant rename`, and the `--tenant` rule, optional with one tenant and a usage
+   error listing the names with several. Covers d4, d11, d23.
 3. M3 Consent: consent bot (A1), Mini App (A2) with Ed25519 `initData` verification, first-run
    ceremony that does not complete without a live `initData` signature verified with the
    configured Telegram key (PROTOCOL §9.4). The Telegram keys and environment as security

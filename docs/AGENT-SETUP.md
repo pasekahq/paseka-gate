@@ -32,6 +32,9 @@ messages carries the risk.
 - MCP over loopback HTTP, or the same contract as plain HTTP with OpenAPI, for agents that
   cannot spawn a process: `http://127.0.0.1:8641/agent/v1`, with the agent's token in the
   agent's secret store.
+- The agent token selects the tenant, so `paseka mcp` takes no `--tenant`. Commands the owner
+  runs on the gate host name the tenant by the local name chosen at `paseka init` and need
+  `--tenant <name>` only on a gate with several tenants (`docs/PROTOCOL.md` §12.1).
 - Each connected agent is registered in the Mini App with a name and the protection level the
   owner chose (`docs/PROTOCOL.md` §5.4). The name is the agent's claim, not a verified identity.
 
