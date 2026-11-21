@@ -1,6 +1,10 @@
 # paseka-gate
 
-Status: pre-alpha draft. Not published, not released, not ready for real data. Nothing here is
+[![CI](https://github.com/pasekahq/paseka-gate/actions/workflows/ci.yml/badge.svg)](https://github.com/pasekahq/paseka-gate/actions/workflows/ci.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/pasekahq/paseka-gate/badge)](https://scorecard.dev/viewer/?uri=github.com/pasekahq/paseka-gate)
+[![License: AGPL-3.0-only](https://img.shields.io/badge/license-AGPL--3.0--only-blue)](LICENSE)
+
+Status: pre-alpha draft. Not released, not ready for real data. Nothing here is
 installable yet; documents describe the target design.
 
 paseka-gate (binary `paseka`) is a consent firewall between your AI agent and other people's
@@ -63,4 +67,10 @@ self-host with one command.
 
 ## License
 
-Dual-licensed under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option.
+Copyright (C) 2026 the paseka-gate contributors.
+
+Licensed under the [GNU Affero General Public License v3.0 only](LICENSE) (SPDX: `AGPL-3.0-only`).
+If you run a modified gate for users over a network, section 13 asks you to offer them its source.
+
+Contributions are accepted under the same license with a DCO sign-off; see
+[CONTRIBUTING.md](CONTRIBUTING.md). Security issues: see [SECURITY.md](SECURITY.md).
