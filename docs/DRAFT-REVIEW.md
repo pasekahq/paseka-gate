@@ -67,9 +67,9 @@ and `contracts/`.
 5. Templates and shelf shares need A1 unless a matching open mandate covers them. The concept
    line "auto-release only for structured/template output or under an open mandate" is read
    with "T0: nothing without consent" as: templates auto-release only under a T1 mandate.
-   Closed: GRILL 5 confirms it (ADR 0006); still open: the one-tap T1 offer at pairing is not in PROTOCOL yet.
+   Partly closed: GRILL 5 confirms it (ADR 0006); still open: the one-tap T1 offer at pairing is not in PROTOCOL yet.
 6. A receiving gate rejects a closed mandate whose `exp - iat` exceeds 60 s.
-   Closed: GRILL 6 confirms 60 s and the re-issue on retry while the draft lives (ADR 0014, PR #7); still open: a receiver's per-peer loosening, PROTOCOL §14 keeps it fixed.
+   Partly closed: GRILL 6 confirms 60 s and the re-issue on retry while the draft lives (ADR 0014, PR #7); still open: a receiver's per-peer loosening, PROTOCOL §14 keeps it fixed.
 7. With the MVP channels, drafts that need A2+ or A3 (fingerprint or sensitive-source hits) are
    blocked with reason `policy`; the owner may lower that floor to A2 through consent.
    Closed: GRILL 7 and 7a changed it: never blocked for a missing channel, the strongest available channel decides, A2+ is Mini App plus PIN; ADR 0015, PR #8, #9.
