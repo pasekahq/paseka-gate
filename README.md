@@ -46,10 +46,12 @@ cannot guarantee.
 ## Two ways to run it
 
 Self-host (main path). One static Rust binary behind Caddy, with a Telegram consent bot you
-create. Your agent installs it with [skills/install/SKILL.md](skills/install/SKILL.md), which
-verifies the release before trusting it: CI provenance, a reproducible rebuild, an audit
-checklist, local attack tests, and a first-run ceremony where you confirm the configuration in
-plain words. After that, security settings change only with your consent.
+create. Your agent installs it with the install skill, released as a separate signed artifact
+(source for review: [skills/install/SKILL.md](skills/install/SKILL.md)). Before you hand it over,
+compare its hash in the places it is published. The skill first checks its own hash against those
+places, then verifies the release before trusting it: CI provenance, a reproducible rebuild, an
+audit checklist, local attack tests, and a first-run ceremony where you confirm the configuration
+in plain words. After that, security settings change only with your consent.
 
 Hosted. A tenant on a gate run by the pasekahq operator, for people who do not want a server.
 You trust the operator: they could read your traffic. You can check the running build against

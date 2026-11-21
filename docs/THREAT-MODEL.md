@@ -360,4 +360,8 @@ CA-22 and CA-41.
 - Volumetric denial of service against the gate's HTTPS endpoint beyond basic rate limits.
 - Timing and other side channels of detectors.
 - Supply-chain verification of the release itself, covered by the install skill and release
-  process, not by the protocol.
+  process (ADR 0008), not by the protocol. The skill is a separate signed artifact whose hash is
+  published in three places. Its first step compares its own hash with at least two of them and
+  stops with an alarm on any mismatch; this catches a stale or swapped copy fetched from one
+  compromised place. A skill written to lie skips that step, so only the owner's own out-of-band
+  comparison of the published hashes, before handing the skill to an agent, covers it.

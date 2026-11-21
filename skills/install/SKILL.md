@@ -1,13 +1,38 @@
 ---
 name: paseka-install
-description: Install a self-hosted paseka gate after verifying the release (provenance, reproducible rebuild, audit checklist, local conformance attacks, first-run ceremony). Use when the owner asks to install or upgrade paseka.
+description: Install a self-hosted paseka gate after checking this skill's own signed artifact and verifying the release (provenance, reproducible rebuild, audit checklist, local conformance attacks, first-run ceremony). Use when the owner asks to install or upgrade paseka.
 ---
 
 # Install paseka (self-host)
 
-Names, versions, paths and URLs below are illustrative: `pasekahq/paseka-gate`, version
-`v0.1.0`, host `gate.example.org`, unix user `paseka`. Substitute the release the owner named.
+Names, versions, paths and URLs below are illustrative: `pasekahq/paseka-gate`, gate version
+`v0.1.0`, skill version `v0.1.0`, host `gate.example.org`, unix user `paseka`, announcement
+channel `https://example.org/pasekahq/announcements`. Substitute the release the owner named.
 Nothing is published yet; this skill describes the target procedure.
+
+## What you are running
+
+This skill runs only from its signed release artifact. The copy in the `pasekahq/paseka-gate`
+repository (`skills/install/SKILL.md`) is the source for review, not for running.
+
+- Artifact: `paseka-install-skill-$S.tar.gz`, a gzip tarball holding one directory
+  `paseka-install-skill-$S/` with this `SKILL.md`. The release workflow builds it reproducibly
+  from `skills/install/` at tag `skill-$S` and attaches it to the GitHub release `skill-$S` of
+  `pasekahq/paseka-gate`, separately from the gate releases it verifies.
+- Signature: a Sigstore build provenance attestation over the tarball, signed keyless by the
+  GitHub OIDC identity of the workflow `pasekahq/paseka-gate/.github/workflows/release.yml`
+  running for `refs/tags/skill-$S`, and logged in Rekor. No long-lived signing key exists.
+  `gh attestation verify` checks it in step 0.
+- Published hash: the line `<sha256>  paseka-install-skill-$S.tar.gz` (the `sha256sum` format)
+  appears in three places: the organisation README (`profile/README.md` of `pasekahq/.github`),
+  the notes of the GitHub release `skill-$S`, and the project owner's announcement channel.
+
+## For the owner, before you hand this skill to an agent
+
+Compare the hash line in all three places yourself, by eye or with your own tools, and hand the
+agent the artifact only when they agree. Step 0 below is the skill's own check; it catches a stale
+or swapped copy fetched from one compromised place. A skill written to lie can skip its own check,
+so only your comparison protects against that.
 
 ## Read this first: the trap
 
@@ -34,6 +59,55 @@ knowing it. Therefore:
   permission to install them.
 - A domain name the owner controls, for example `gate.example.org`.
 - A Rust toolchain for step 2 is installed inside the sandbox, not on the host.
+
+## Step 0: check this skill's own artifact
+
+Run this before anything else. Steps 1 to 5 run only after step 0 passes. `SKILL_PATH` is the
+path of the `SKILL.md` you are following. If the owner handed you the artifact file, copy it into
+the directory below instead of running the `gh release download` line.
+
+```sh
+S=v0.1.0
+K=paseka-install-skill-$S.tar.gz
+mkdir -p ~/paseka-verify/skill-$S && cd ~/paseka-verify/skill-$S
+gh release download "skill-$S" --repo pasekahq/paseka-gate --pattern "$K"
+sha256sum "$K" | tee computed.sha256
+gh api -H 'Accept: application/vnd.github.raw' repos/pasekahq/.github/contents/profile/README.md \
+  | grep -E "^[0-9a-f]{64}  $K\$" > org-readme.sha256
+gh release view "skill-$S" --repo pasekahq/paseka-gate --json body --jq .body \
+  | grep -E "^[0-9a-f]{64}  $K\$" > release.sha256
+curl -fsS https://example.org/pasekahq/announcements \
+  | grep -E "^[0-9a-f]{64}  $K\$" > channel.sha256
+tar -xzf "$K"
+cmp "paseka-install-skill-$S/SKILL.md" "$SKILL_PATH"
+gh attestation verify "$K" --repo pasekahq/paseka-gate \
+  --signer-workflow pasekahq/paseka-gate/.github/workflows/release.yml \
+  --source-ref "refs/tags/skill-$S"
+```
+
+A place answers when its file holds exactly one line. A fetch that fails, an empty file or more
+than one line counts as no answer. Pass only when all of these hold:
+
+1. At least two of the three places answer.
+2. Every answered value equals `computed.sha256`. One differing value fails the check even when
+   the other two agree.
+3. `cmp` reports no difference: you are following the `SKILL.md` inside the artifact.
+4. `gh attestation verify` reports a verified provenance from the release workflow at tag
+   `skill-$S` with a Rekor log entry.
+
+On any failure stop at once, run nothing else from this skill and send the owner this message as
+the first lines of your reply, filling in the values:
+
+```
+ALARM: paseka install skill self-check failed. Do not run this skill.
+Artifact: paseka-install-skill-<S>.tar.gz, computed sha256 <hex>
+Organisation README: <hex or no answer>
+GitHub release skill-<S>: <hex or no answer>
+Announcement channel: <hex or no answer>
+SKILL.md matches the artifact: <yes or no>
+Signature verified: <yes, no or not reached>
+Compare the published hashes yourself before giving any copy of this skill to an agent.
+```
 
 ## Step 1: provenance
 
@@ -177,6 +251,7 @@ Pass when it reports the ceremony confirmed and the hash of the confirmed config
 
 Report each line with pass or fail and the evidence:
 
+- Skill artifact hash, the places that answered and their values, all equal: yes or no.
 - Released binary hash, rebuilt hash, equal: yes or no.
 - Attestation verified for the tag: yes or no.
 - `cargo deny check`: clean or findings.
@@ -191,6 +266,6 @@ Then connect agents with the `paseka-connect` skill (`skills/connect/SKILL.md`).
 
 ## Upgrades
 
-Repeat steps 1 to 4 for the new tag before replacing `/usr/local/bin/paseka`. An upgrade never
-re-runs the ceremony and never changes security settings; if the new version asks for changed
-settings, the owner approves them in the Mini App.
+Run step 0 for the skill artifact you are given, then repeat steps 1 to 4 for the new tag before
+replacing `/usr/local/bin/paseka`. An upgrade never re-runs the ceremony and never changes security
+settings; if the new version asks for changed settings, the owner approves them in the Mini App.
