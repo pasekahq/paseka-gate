@@ -131,8 +131,8 @@ context) drafts a meaningful answer; Bob sees the exact answer and approves; it 
 - Guest mode (a person without own gate) = a tenant on a hosted gate working by hand in the Mini
   App. A remote MCP connector with OAuth for browser ChatGPT comes AFTER the MVP (keep the design
   open for it).
-- Clean slate: NO compatibility with the old Python gate (vladmesh/agent-peer-protocol, Event 0.2,
-  HMAC). Old guests are re-invited manually. Its tests (CF-1…CF-10 consent-forgery suite) are a
+- Clean slate: NO compatibility with the old Python gate (Event 0.2, HMAC; see History). Old
+  guests are re-invited manually. Its tests (CF-1…CF-10 consent-forgery suite) are a
   useful source of attack ideas for the conformance suite.
 
 ## Engineering constraints (same stack as qb / ulei)
@@ -152,3 +152,7 @@ multi-peer, pairing by link; gate↔gate HTTPS with signatures; risk evaluation 
 canaries, dictionary; fingerprints if cheap); shelves (T2); conformance attacks; reproducible
 release; install skill. Later: OAuth ChatGPT connector, A2+/A3, Slack/ntfy, independent approval
 page, pip/npm wrappers, cargo-vet audits, T3.
+
+## History
+Paseka gate grew out of [agent-peer-protocol](https://github.com/vladmesh/agent-peer-protocol)
+and is incompatible with it on purpose ([ADR 0009](../adr/0009-clean-slate.md)).
