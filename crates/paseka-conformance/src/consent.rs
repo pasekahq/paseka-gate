@@ -1,12 +1,16 @@
-//! Attacks on the consent path: drafts, approval requests and decisions (SP-2 to SP-7, SP-16).
+//! Attacks on the consent path: drafts, approval requests and decisions (SP-2 to SP-7, SP-16,
+//! SP-19).
 
 use paseka_core::channel::Selection;
-use paseka_core::draft::{DecisionAttempt, DecisionError, DraftError};
+use paseka_core::draft::{
+    DRAFTS_PER_PEER_PER_HOUR, DecisionAttempt, DecisionError, DraftError, DraftLimit,
+    PENDING_DRAFTS_PER_TENANT, admit,
+};
 use paseka_core::risk::Required;
 use paseka_proto::draft::{DraftState, Reason};
 use paseka_proto::evidence::Channel;
 use paseka_proto::mandate::AttachmentMeta;
-use paseka_proto::{Level, Sha256};
+use paseka_proto::{Level, PeerHandle, Sha256};
 
 use crate::world::{BODY, NOW, TTL, approve, draft, mvp_channels, revision, seed, tenant};
 use crate::{Outcome, all, expect};
@@ -175,4 +179,47 @@ pub(crate) fn ca47_weaker_channel() -> Outcome {
     expect(d.clone().decide(&a, NOW + 1), |e| {
         *e == DecisionError::ChannelTooWeak
     })
+}
+
+/// 100 proposals within a minute, to one peer and spread over two: the peer limit refuses the
+/// first, the pending limit the second, and every refusal is `rate_limited`.
+pub(crate) fn ca43_draft_flood() -> Outcome {
+    let bob = PeerHandle::new("bob").expect("fixture handle");
+    let carol = PeerHandle::new("carol").expect("fixture handle");
+    let floods = [
+        (
+            vec![&bob],
+            DRAFTS_PER_PEER_PER_HOUR,
+            DraftLimit::PerPeerHour,
+        ),
+        (
+            vec![&bob, &carol],
+            PENDING_DRAFTS_PER_TENANT,
+            DraftLimit::PendingPerTenant,
+        ),
+    ];
+    all(floods.into_iter().map(|(peers, limit, refusal)| {
+        let mut created = Vec::new();
+        for (i, at) in (0..100u64).enumerate() {
+            let to = peers[i % peers.len()];
+            let now = NOW + at * 3 / 5;
+            match admit(&created, &tenant(1), to, now) {
+                Ok(()) => {
+                    let mut d = draft(BODY, Required::Level(Level::A1));
+                    d.to = to.clone();
+                    d.created_at = now;
+                    created.push(d);
+                }
+                Err(DraftError::RateLimited(r)) if r == refusal && created.len() == limit => {}
+                Err(e) => {
+                    return Outcome::Fail(format!("proposal {i}: {e:?} after {}", created.len()));
+                }
+            }
+        }
+        if created.len() == limit {
+            Outcome::Pass
+        } else {
+            Outcome::Fail(format!("{} of 100 proposals admitted", created.len()))
+        }
+    }))
 }

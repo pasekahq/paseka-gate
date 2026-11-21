@@ -7,6 +7,9 @@
 
 #![forbid(unsafe_code)]
 
+/// One hour in Unix seconds.
+pub(crate) const HOUR: u64 = 3600;
+
 pub mod channel;
 pub mod draft;
 pub mod envelope;

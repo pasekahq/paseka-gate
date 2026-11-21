@@ -238,8 +238,7 @@ fn ca42_agents_unix_user_reads_gate() {
 }
 
 #[test]
-#[ignore = "needs the gate daemon"]
-fn ca43_agent_proposes_100_drafts_minute() {
+fn ca43_draft_flood() {
     check("CA-43");
 }
 

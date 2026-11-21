@@ -78,6 +78,8 @@ const CODE_KEYWORDS: [&str; 19] = [
     "отп",
     "2фа",
 ];
+/// Words that may stand between a keyword and a year-like code: "code is 1984".
+const CODE_LINKS: [&str; 5] = ["is", "=", "-", "это", "\u{2014}"];
 const CODE_KEYWORD_STEMS: [&str; 3] = ["подтвержд", "верификац", "одноразов"];
 /// Words that, next to a keyword, name a code that grants nothing.
 const CODE_QUALIFIERS: [&str; 17] = [
@@ -241,8 +243,9 @@ impl<'a> Link<'a> {
     }
 }
 
-/// One-time codes: a code of 4 to 8 digits that is not a year, or two groups of 3 or 4, within
-/// [`CODE_KEYWORD_WINDOW`] words of a code keyword; and `otpauth:` URIs.
+/// One-time codes: a code of 4 to 8 digits, or two groups of 3 or 4, within
+/// [`CODE_KEYWORD_WINDOW`] words of a code keyword; and `otpauth:` URIs. A year from 1900 to 2099
+/// counts only directly after a keyword, or after a keyword and one of [`CODE_LINKS`].
 pub(super) fn one_time_codes(text: &str, out: &mut Vec<Flag>) {
     for (s, e) in words(text) {
         if text[s..e].to_ascii_lowercase().contains("otpauth:") {
@@ -269,7 +272,8 @@ pub(super) fn one_time_codes(text: &str, out: &mut Vec<Flag>) {
             && CODE_GROUP_DIGITS.contains(&t.word.len())
             && CODE_GROUP_DIGITS.contains(&tokens[i + 1].word.len());
         let last = if pair { i + 1 } else { i };
-        let single = !pair && (code_digits(&t.word) || grouped(&t.word));
+        let year_code = year(&t.word) && after_keyword(&tokens, i);
+        let single = !pair && (code_digits(&t.word) || grouped(&t.word) || year_code);
         let digits_before = i > 0 && digits(i - 1) && spaced(i - 1);
         let digits_after = digits(last + 1) && spaced(last);
         let isolated = !(digits_before || digits_after);
@@ -307,10 +311,24 @@ fn all_digits(w: &str) -> bool {
     !w.is_empty() && w.bytes().all(|b| b.is_ascii_digit())
 }
 
-/// 4 to 8 digits, except a year from 1900 to 2099.
+/// 4 to 8 digits, except a year.
 fn code_digits(w: &str) -> bool {
-    let year = w.len() == 4 && (w.starts_with("19") || w.starts_with("20"));
-    all_digits(w) && CODE_DIGITS.contains(&w.len()) && !year
+    all_digits(w) && CODE_DIGITS.contains(&w.len()) && !year(w)
+}
+
+/// A 4-digit number from 1900 to 2099.
+fn year(w: &str) -> bool {
+    all_digits(w) && w.len() == 4 && (w.starts_with("19") || w.starts_with("20"))
+}
+
+/// Whether token `i` directly follows a code keyword, with at most one of [`CODE_LINKS`] between.
+fn after_keyword(tokens: &[Token], i: usize) -> bool {
+    let link = |n: usize| CODE_LINKS.contains(&tokens[n].word.as_str());
+    match i {
+        0 => false,
+        1 => keyword(tokens, 0),
+        _ => keyword(tokens, i - 1) || (link(i - 1) && keyword(tokens, i - 2)),
+    }
 }
 
 /// `123-456` or `1234-5678`.

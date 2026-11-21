@@ -18,12 +18,14 @@ use paseka_core::template::field_ok;
 use paseka_core::tripwire::{
     ClearAttempt, ClearError, McpWindow, ModeError, TripwireBook, TripwireMode,
 };
-use paseka_proto::draft::{DraftKind, DraftState};
+use paseka_proto::draft::{DeliveryState, DraftKind, DraftState};
 use paseka_proto::evidence::Channel;
 use paseka_proto::mandate::{
     AttachmentRule, Constraints, OpenKind, OpenMandate, OpenProof, PrivateSources, Rate,
 };
-use paseka_proto::tools::{FieldSpec, FieldType, FieldValue, ShareInput, TOOL_NAMES, ToolCall};
+use paseka_proto::tools::{
+    Delivery, FieldSpec, FieldType, FieldValue, ShareInput, TOOL_NAMES, ToolCall,
+};
 use paseka_proto::{Address, DocId, Level, OpenTrust, Sha256, ShelfId, TemplateId, TenantId, V1};
 
 use crate::world::{
@@ -158,18 +160,46 @@ pub(crate) fn ca22_no_oracle() -> Outcome {
         false,
         NOW,
     );
+    let delivery = Delivery {
+        state: DeliveryState::Pending,
+        updated_at: NOW,
+    };
     let views = [
         d.view(None, trust),
-        draft(BODY, Required::Level(Level::A2)).view(None, trust),
+        draft(BODY, Required::Level(Level::A2)).view(Some(delivery), trust),
     ];
     all(views.iter().map(|v| {
         let json = serde_json::to_value(v).expect("view serialises");
-        let keys: Vec<&String> = json.as_object().expect("object").keys().collect();
+        let mut keys = Vec::new();
+        nested_keys(&json, "", &mut keys);
         match keys.iter().find(|k| leaks.iter().any(|l| k.contains(l))) {
             Some(k) => Outcome::Fail(format!("agent view exposes {k}")),
             None => Outcome::Pass,
         }
     }))
+}
+
+/// Every object key in `v` at any depth, as a dotted path from the root.
+fn nested_keys(v: &serde_json::Value, path: &str, out: &mut Vec<String>) {
+    match v {
+        serde_json::Value::Object(map) => {
+            for (k, child) in map {
+                let key = if path.is_empty() {
+                    k.clone()
+                } else {
+                    format!("{path}.{k}")
+                };
+                nested_keys(child, &key, out);
+                out.push(key);
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for item in items {
+                nested_keys(item, path, out);
+            }
+        }
+        _ => {}
+    }
 }
 
 pub(crate) fn ca24_no_settings_side_path() -> Outcome {

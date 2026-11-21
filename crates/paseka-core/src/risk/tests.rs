@@ -184,6 +184,40 @@ fn canary_blocks_even_when_obfuscated() {
 }
 
 #[test]
+fn a_canary_in_attachment_text_blocks_like_one_in_the_body() {
+    let mut r = OwnerRules::default();
+    r.add_canary(CanaryId(7), "PASEKA-CANARY-7f3a9c").unwrap();
+    for attachment_text in [
+        &["notes", "fyi PASEKA-CANARY-7f3a9c"][..],
+        &["blob UEFTRUtBLUNBTkFSWS03ZjNhOWM"][..],
+    ] {
+        let a = assess(
+            &r,
+            &Draft {
+                attachment_text,
+                ..free("see the attached file")
+            },
+        );
+        assert_eq!(a.required, Required::Block, "{attachment_text:?}");
+        assert_eq!(a.canaries, vec![CanaryId(7)], "{attachment_text:?}");
+    }
+    let clean = Draft {
+        attachment_text: &["nothing here"],
+        ..free("see the attached file")
+    };
+    assert_eq!(assess(&r, &clean).canaries, vec![]);
+}
+
+#[test]
+fn the_debug_output_of_owner_rules_names_canaries_by_id_without_their_marker() {
+    let mut r = OwnerRules::default();
+    r.add_canary(CanaryId(7), "PASEKA-CANARY-7f3a9c").unwrap();
+    let shown = format!("{r:?}");
+    assert!(shown.contains("CanaryId(7)"), "{shown}");
+    assert!(!shown.to_lowercase().contains("7f3a9c"), "{shown}");
+}
+
+#[test]
 fn every_matching_canary_is_named_by_id_and_no_flag_carries_its_marker() {
     let mut r = OwnerRules::default();
     r.add_canary(CanaryId(1), "PASEKA-CANARY-7f3a9c").unwrap();
@@ -382,6 +416,36 @@ fn numbers_without_a_code_keyword_nearby_are_no_one_time_code() {
         "code 30.11.2026",
         "code 12",
         "code 123456789",
+    ] {
+        assert_eq!(one_time_codes_in(text), Vec::<&str>::new(), "{text:?}");
+    }
+}
+
+#[test]
+fn a_year_like_code_directly_after_a_code_keyword_is_a_one_time_code() {
+    for (text, code) in [
+        ("your code is 2048", "2048"),
+        ("code: 1984", "1984"),
+        ("код: 1984", "1984"),
+        ("Ваш код \u{2014} 2010", "2010"),
+        ("OTP 2024", "2024"),
+        ("2FA: 1999, do not share it", "1999"),
+        ("verification code = 2099.", "2099"),
+    ] {
+        assert_eq!(one_time_codes_in(text), vec![code], "{text:?}");
+    }
+}
+
+#[test]
+fn a_year_apart_from_a_code_keyword_is_no_one_time_code() {
+    for text in [
+        "we met in 1999",
+        "a customer since 2024",
+        "the code review in 2023 went well",
+        "code is from 1999",
+        "zip code 1999",
+        "error code: 2001",
+        "код ошибки: 2001",
     ] {
         assert_eq!(one_time_codes_in(text), Vec::<&str>::new(), "{text:?}");
     }

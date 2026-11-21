@@ -96,7 +96,7 @@ attacks! {
     "CA-40" "SP-17" "bidi, zero-width or control characters in the body" => policy::ca40_invisible_characters;
     "CA-41" "SP-17" "body longer than the A1 prompt capacity" => policy::ca41_over_prompt_capacity;
     "CA-42" "SP-18" "agent's unix user reads the gate state" => || Outcome::Pending(NEEDS_INSTALL);
-    "CA-43" "SP-19" "agent proposes 100 drafts in a minute" => || Outcome::Pending(NEEDS_SERVER);
+    "CA-43" "SP-19" "agent proposes 100 drafts in a minute" => consent::ca43_draft_flood;
     "CA-44" "SP-19" "peer burst above its volume limit" => || Outcome::Pending(NEEDS_SERVER);
     "CA-45" "SP-20" "one journal row modified in the database" => || Outcome::Pending(NEEDS_JOURNAL);
     "CA-46" "SP-21" "gate killed between decision and delivery" => || Outcome::Pending(NEEDS_SERVER);

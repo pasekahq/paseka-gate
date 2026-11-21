@@ -9,6 +9,7 @@ use paseka_proto::jws::{Compact, JwsError, MAX_TOKEN_BYTES, Typ};
 use paseka_proto::{Address, EventId, KeyId, Sha256, TenantId, UnixSecs};
 use serde::Serialize;
 
+use crate::HOUR;
 use crate::channel::SETTING_LEVEL;
 use crate::hash::sha256;
 use crate::mandate::{JtiBook, MandateInvalid, verify_received};
@@ -23,7 +24,7 @@ pub const SKEW_SECS: u64 = 300;
 pub const MAX_AGE_SECS: u64 = 604_800;
 /// Retry horizon: the sender attempts a delivery until this long after `iat` (PROTOCOL §10.4,
 /// §14).
-pub const RETRY_HORIZON_SECS: u64 = 72 * 3600;
+pub const RETRY_HORIZON_SECS: u64 = 72 * HOUR;
 
 /// Whether the sender may still attempt delivery of an envelope created at `iat`; once not, the
 /// delivery is `failed`.
