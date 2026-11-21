@@ -1,6 +1,9 @@
 use super::*;
-use crate::source::{Access, BuiltIn, Source, SourceKind, SourceRegistry};
-use crate::testkit::{CARD, DOCUMENT, FILES, MAIL, QUOTE, SECRET, address, free, settle, tenant};
+use crate::source::{Access, BuiltIn, Source, SourceId, SourceKind, SourceRegistry};
+use crate::testkit::{
+    BOB_INBOUND, CARD, CHAT, DOCUMENT, FILES, MAIL, QUOTE, SECRET, address, audiences, free,
+    settle, tenant,
+};
 
 fn kinds(text: &str) -> Vec<FlagKind> {
     let mut k: Vec<FlagKind> = structural(text).into_iter().map(|f| f.kind).collect();
@@ -329,4 +332,299 @@ fn an_allow_for_one_peer_reaches_neither_another_peer_nor_another_tenant() {
     assert_eq!(assess_to(1, 2), Required::Level(Level::A1));
     assert_eq!(assess_to(1, 4), Required::Level(Level::A2));
     assert_eq!(assess_to(2, 2), Required::Level(Level::A2));
+}
+
+fn one_time_codes_in(text: &str) -> Vec<&str> {
+    structural(text)
+        .into_iter()
+        .filter(|f| f.kind == FlagKind::OneTimeCode)
+        .map(|f| &text[f.start.unwrap()..f.end.unwrap()])
+        .collect()
+}
+
+#[test]
+fn a_code_next_to_a_code_keyword_is_a_one_time_code() {
+    let cases: [(&str, &str); 12] = [
+        ("Your verification code is 482913.", "482913"),
+        ("482913 is your login code", "482913"),
+        ("OTP: 4821", "4821"),
+        ("2FA code 123 456, do not share it", "123 456"),
+        ("use code 123-456 to sign in", "123-456"),
+        ("one-time passcode 70114825", "70114825"),
+        ("MFA (4829)", "4829"),
+        ("Ваш код: 5821", "5821"),
+        ("Код подтверждения 482913", "482913"),
+        ("482913, одноразовый пароль", "482913"),
+        ("код верификации: 3017", "3017"),
+        (
+            "otpauth://totp/example.org:alice?secret=AAAAAAAA&issuer=example.org",
+            "otpauth://totp/example.org:alice?secret=AAAAAAAA&issuer=example.org",
+        ),
+    ];
+    for (text, code) in cases {
+        assert_eq!(one_time_codes_in(text), vec![code], "{text:?}");
+    }
+}
+
+#[test]
+fn numbers_without_a_code_keyword_nearby_are_no_one_time_code() {
+    for text in [
+        "I have 4821 apples",
+        "the meeting moved to 2026-11-30 at 18:00",
+        "it costs 1999 EUR, or $4821 with tax",
+        "call +1 555 010 9999",
+        "call 555 0100 tomorrow",
+        "the code freeze starts in 2027",
+        "zip code 94105",
+        "error code 5003 again",
+        "код ошибки 5003",
+        "a verification step is needed; the office is room 4821 on the far side",
+        "code 30.11.2026",
+        "code 12",
+        "code 123456789",
+    ] {
+        assert_eq!(one_time_codes_in(text), Vec::<&str>::new(), "{text:?}");
+    }
+}
+
+#[test]
+fn a_one_time_code_blocks_under_any_decision_approval_or_open_mandate() {
+    let mut reg = SourceRegistry::default();
+    reg.register(&tenant(1), FILES, SourceKind::Files).unwrap();
+    settle(
+        &mut reg,
+        Source::BuiltIn(BuiltIn::Secrets),
+        &address(2),
+        Access::Allow,
+    );
+    let decisions = reg.towards(&tenant(1), &address(2));
+    for open_mandate in [false, true] {
+        let d = Draft {
+            decisions: &decisions,
+            open_mandate,
+            ..free("your code is 482913")
+        };
+        let a = assess(&OwnerRules::default(), &d);
+        assert_eq!(a.required, Required::Block);
+        assert_eq!(
+            a.flags[0].source,
+            Some(Source::BuiltIn(BuiltIn::OneTimeCodes))
+        );
+    }
+}
+
+const VAULT: SourceId = SourceId(5);
+const VAULT_VALUE: &str = "alice-vault-aaaaaaaa";
+
+fn vault_rules() -> OwnerRules {
+    let mut r = OwnerRules::default();
+    r.add_vault_secret(VAULT, VAULT_VALUE).unwrap();
+    r
+}
+
+#[test]
+fn a_vault_secret_in_the_body_or_an_attachment_reports_its_source_without_its_value() {
+    let r = vault_rules();
+    let body = format!("the password is {VAULT_VALUE} ok");
+    for (text, attachment_text) in [
+        (body.as_str(), &[][..]),
+        ("see the attached file", &[VAULT_VALUE][..]),
+    ] {
+        let a = assess(
+            &r,
+            &Draft {
+                attachment_text,
+                ..free(text)
+            },
+        );
+        assert_eq!(a.required, Required::Level(Level::A2), "{text}");
+        let hits: Vec<&Flag> = a
+            .flags
+            .iter()
+            .filter(|f| f.kind == FlagKind::VaultSecret)
+            .collect();
+        assert_eq!(hits.len(), 1, "{text}");
+        assert_eq!(hits[0].source, Some(Source::Registered(VAULT)));
+        assert!(!format!("{a:?}").contains(VAULT_VALUE), "{a:?}");
+    }
+    let assessed = assess(&r, &free(&body));
+    let hit = assessed
+        .flags
+        .iter()
+        .find(|f| f.kind == FlagKind::VaultSecret)
+        .unwrap();
+    assert_eq!(&body[hit.start.unwrap()..hit.end.unwrap()], VAULT_VALUE);
+    assert!(!format!("{r:?}").contains(VAULT_VALUE));
+}
+
+#[test]
+fn a_vault_secret_matches_its_exact_value_only_and_has_a_minimum_length() {
+    let r = vault_rules();
+    for text in [
+        "alice-vault-aaaaaaa",
+        "ALICE-VAULT-AAAAAAAA",
+        "alice vault aaaaaaaa",
+    ] {
+        let a = assess(&r, &free(text));
+        assert!(
+            a.flags.iter().all(|f| f.kind != FlagKind::VaultSecret),
+            "{text}"
+        );
+    }
+    let mut r = OwnerRules::default();
+    assert_eq!(
+        r.add_vault_secret(VAULT, "aaaaaaa"),
+        Err(VaultSecretTooShort)
+    );
+    assert_eq!(r.add_vault_secret(VAULT, "аааааааа"), Ok(()));
+}
+
+#[test]
+fn the_registry_decides_a_vault_secret_per_peer() {
+    let mut reg = SourceRegistry::default();
+    reg.register(&tenant(1), VAULT, SourceKind::VaultSecret)
+        .unwrap();
+    settle(
+        &mut reg,
+        Source::Registered(VAULT),
+        &address(2),
+        Access::Never,
+    );
+    settle(
+        &mut reg,
+        Source::Registered(VAULT),
+        &address(3),
+        Access::Allow,
+    );
+    let text = format!("use {VAULT_VALUE}");
+    let cases = [
+        (2, Required::Block),
+        (3, Required::Level(Level::A0)),
+        (4, Required::Level(Level::A2)),
+    ];
+    for (peer, want) in cases {
+        let decisions = reg.towards(&tenant(1), &address(peer));
+        let d = Draft {
+            decisions: &decisions,
+            open_mandate: true,
+            ..free(&text)
+        };
+        assert_eq!(assess(&vault_rules(), &d).required, want, "peer {peer}");
+    }
+}
+
+fn private_links_in(rules: &OwnerRules, text: &str) -> Vec<String> {
+    let mut a = assess(rules, &free(text));
+    a.flags.append(&mut a.allowed);
+    a.flags
+        .into_iter()
+        .filter(|f| f.kind == FlagKind::PrivateLink)
+        .map(|f| {
+            assert_eq!(f.source, Some(Source::BuiltIn(BuiltIn::PrivateLinks)));
+            f.detail
+        })
+        .collect()
+}
+
+#[test]
+fn links_on_a_private_link_domain_or_with_an_access_token_are_private_links() {
+    let r = OwnerRules::default();
+    let cases: [(&str, &str); 12] = [
+        (
+            "https://docs.google.com/document/d/AAAA/edit",
+            "docs.google.com",
+        ),
+        ("drive.google.com/file/d/AAAA/view", "drive.google.com"),
+        ("https://www.dropbox.com/s/aaaa/plan.pdf", "dropbox.com"),
+        ("https://alice.sharepoint.com/:w:/g/AAAA", "sharepoint.com"),
+        ("https://t.me/+AAAAAAAA", "t.me/+"),
+        ("https://t.me/joinchat/AAAAAAAA", "t.me/joinchat"),
+        ("https://discord.gg/aaaa", "discord.gg"),
+        (
+            "https://example.org/f.pdf?X-Amz-Signature=AAAA",
+            "x-amz-signature in the query",
+        ),
+        ("https://example.org/f.pdf?a=1&sig=AAAA", "sig in the query"),
+        ("https://example.org/login?token=AAAA", "token in the query"),
+        (
+            "https://example.org/cb#access_token=AAAA",
+            "access_token in the query",
+        ),
+        ("https://example.org/m?magic=AAAA", "magic in the query"),
+    ];
+    for (text, detail) in cases {
+        assert_eq!(private_links_in(&r, text), vec![detail], "{text}");
+    }
+}
+
+#[test]
+fn ordinary_links_are_no_private_links() {
+    let r = OwnerRules::default();
+    for text in [
+        "https://example.org/a?id=7&page=2",
+        "https://example.org/a?token=",
+        "https://t.me/example_channel",
+        "https://notdropbox.com/s/aaaa",
+        "https://example.org/docs.google.com",
+        "mailto:alice@example.org",
+    ] {
+        assert_eq!(private_links_in(&r, text), Vec::<String>::new(), "{text}");
+    }
+}
+
+#[test]
+fn an_owner_entry_adds_a_private_link_domain_and_the_registry_decides_per_peer() {
+    let mut r = OwnerRules::default();
+    r.add_private_link_domain("Files.Example.org/share");
+    let link = "https://cdn.files.example.org/share/AAAA";
+    assert_eq!(private_links_in(&r, link), vec!["files.example.org/share"]);
+    assert_eq!(
+        private_links_in(&r, "https://files.example.org/public/a"),
+        Vec::<String>::new()
+    );
+    let mut reg = SourceRegistry::default();
+    let links = Source::BuiltIn(BuiltIn::PrivateLinks);
+    settle(&mut reg, links, &address(2), Access::Never);
+    settle(&mut reg, links, &address(3), Access::Allow);
+    for (peer, want) in [
+        (2, Required::Block),
+        (3, Required::Level(Level::A2)),
+        (4, Required::Level(Level::A2)),
+    ] {
+        let decisions = reg.towards(&tenant(1), &address(peer));
+        let d = Draft {
+            decisions: &decisions,
+            ..free(link)
+        };
+        let a = assess(&r, &d);
+        assert_eq!(a.required, want, "peer {peer}");
+        let flagged = a.flags.iter().any(|f| f.kind == FlagKind::PrivateLink);
+        assert_eq!(flagged, peer != 3, "peer {peer}");
+    }
+}
+
+#[test]
+fn a_quote_of_a_chat_needs_consent_only_outside_the_chat_and_a_peers_own_words_go_back() {
+    let reg = audiences();
+    let mut chat = OwnerRules::default();
+    chat.add_fingerprint(CHAT, DOCUMENT);
+    let mut inbound = OwnerRules::default();
+    inbound.add_fingerprint(BOB_INBOUND, DOCUMENT);
+    let a0 = Required::Level(Level::A0);
+    let a2p = Required::Level(Level::A2Plus);
+    for (rules, peer, want) in [
+        (&chat, 2, a0),
+        (&chat, 3, a0),
+        (&chat, 4, a2p),
+        (&inbound, 2, a0),
+        (&inbound, 3, a2p),
+    ] {
+        let decisions = reg.towards(&tenant(1), &address(peer));
+        let d = Draft {
+            decisions: &decisions,
+            open_mandate: true,
+            ..free(QUOTE)
+        };
+        assert_eq!(assess(rules, &d).required, want, "peer {peer}");
+    }
 }

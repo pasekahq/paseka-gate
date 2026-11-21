@@ -39,3 +39,4 @@ points to the successor.
 | [0018](0018-source-registry-allow-ask-never.md) | A source registry decides Allow, Ask or Never per source and peer |
 | [0019](0019-open-mandates-never-widen-the-source-registry.md) | Open mandates, conversation trust included, never widen the source registry |
 | [0020](0020-pairing-sas-and-unverified-peers-capped-at-t1.md) | The pairing SAS binds both addresses; trust above T1 needs a verified peer unless the owner turns that off |
+| [0021](0021-registry-detectors-and-audience-defaults.md) | One-time codes, vault secrets, private links and chats are registry detectors; chats and own messages default to Allow towards their audience |

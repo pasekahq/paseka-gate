@@ -2,7 +2,7 @@
 //! Never. Evaluation reads one tenant's decisions towards one peer as [`Decisions`]. One-time
 //! codes are always Never; Never is set or lifted only on the settings page.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use paseka_proto::evidence::Channel;
 use paseka_proto::{Address, TenantId};
@@ -30,10 +30,13 @@ pub enum BuiltIn {
     PersonalIds,
     /// One-time codes, 2FA and OTP. Always [`Access::Never`].
     OneTimeCodes,
+    /// Links that grant access to whoever holds them: listed domains and access tokens in the
+    /// query.
+    PrivateLinks,
 }
 
 /// Kind of a source the owner registers.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum SourceKind {
     /// Files and folders, caught by fingerprints (S8).
     Files,
@@ -41,10 +44,36 @@ pub enum SourceKind {
     AgentContext,
     /// An MCP source such as mail, calendar or contacts, caught by reads in the source log (S9).
     Mcp,
-    /// The messages one peer sent, caught by fingerprints of their bodies (S8).
-    PeerInbound,
+    /// The messages this peer sent, caught by fingerprints of their bodies (S8). Allow towards
+    /// this peer until the owner decides otherwise.
+    PeerInbound(Address),
     /// Memory entries tagged as about third parties, caught by fingerprints (S8).
     ThirdParties,
+    /// A named secret from a vault, caught by an exact match of its value (S4).
+    VaultSecret,
+    /// Another chat or group, caught by fingerprints of its messages (S8). Allow towards its
+    /// members until the owner decides otherwise.
+    Chat {
+        /// The peers in the chat.
+        members: BTreeSet<Address>,
+    },
+}
+
+impl SourceKind {
+    /// The access towards `peer` before any owner decision: Allow towards the peer whose own
+    /// messages these are or who is in the chat, otherwise Ask.
+    pub fn default_towards(&self, peer: &Address) -> Access {
+        let audience = match self {
+            Self::PeerInbound(from) => from == peer,
+            Self::Chat { members } => members.contains(peer),
+            Self::Files
+            | Self::AgentContext
+            | Self::Mcp
+            | Self::ThirdParties
+            | Self::VaultSecret => false,
+        };
+        if audience { Access::Allow } else { Access::Ask }
+    }
 }
 
 /// The gate's id of one registered source in a tenant's settings.
@@ -60,7 +89,8 @@ pub enum Source {
     Registered(SourceId),
 }
 
-/// One tenant's decisions towards one peer. A source without a decision is [`Access::Ask`].
+/// One tenant's decisions towards one peer. A source without a decision is [`Access::Ask`];
+/// [`SourceRegistry::towards`] fills in the defaults of registered sources.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Decisions(BTreeMap<Source, Access>);
 
@@ -128,7 +158,8 @@ pub struct SourceRegistry {
 }
 
 impl SourceRegistry {
-    /// Registers source `id` of `kind` in `tenant`. Its decisions start at Ask for every peer.
+    /// Registers source `id` of `kind` in `tenant`. Its decisions start at
+    /// [`SourceKind::default_towards`] for every peer.
     ///
     /// # Errors
     /// [`ChangeError::AlreadyRegistered`] when `id` exists in `tenant`.
@@ -146,16 +177,22 @@ impl SourceRegistry {
     }
 
     /// The kind of registered source `id` in `tenant`.
-    pub fn kind(&self, tenant: &TenantId, id: SourceId) -> Option<SourceKind> {
-        self.registered.get(tenant, &id).copied()
+    pub fn kind(&self, tenant: &TenantId, id: SourceId) -> Option<&SourceKind> {
+        self.registered.get(tenant, &id)
     }
 
-    /// `tenant`'s decisions towards `peer`, the input of evaluation.
+    /// `tenant`'s decisions towards `peer`, the input of evaluation: the owner's decisions over
+    /// the defaults of the registered sources.
     pub fn towards(&self, tenant: &TenantId, peer: &Address) -> Decisions {
-        self.decisions
-            .get(tenant, peer)
-            .cloned()
-            .unwrap_or_default()
+        let mut d: BTreeMap<Source, Access> = self
+            .registered
+            .iter(tenant)
+            .map(|(id, kind)| (Source::Registered(*id), kind.default_towards(peer)))
+            .collect();
+        if let Some(owner) = self.decisions.get(tenant, peer) {
+            d.extend(&owner.0);
+        }
+        Decisions(d)
     }
 
     /// Applies an owner decision.

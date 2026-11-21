@@ -299,15 +299,20 @@ an owner decision at A2 or higher while tripwire mode is inactive.
   block only" through `telegram-miniapp`; an agent tool call. Result: all refused, tripwire mode
   stays active; a decision through `telegram-miniapp-pin` clears it.
 
-SP-24 Source registry (ADR 0018, ADR 0019). Content of a source whose registry decision towards the
+SP-24 Source registry (ADR 0018, ADR 0019, ADR 0021). Content of a source whose registry decision towards the
 recipient is Never does not leave: no owner approval of the draft and no open mandate releases it.
 Content of a source whose decision is Ask leaves only with the owner's approval of the draft; no
 open mandate releases it, conversation trust included, whatever its `private_sources`. One-time
 codes are Never towards every peer. Never is set or lifted only by an owner decision on the
 settings page at A2 or higher; an approval prompt, an open mandate and the agent cannot change it.
-An Allow towards one peer applies to that peer only. The property covers what a built detector
-catches; `docs/MVP.md` (Source coverage) lists which sources are caught in the MVP and by what,
-which detectors come before the MVP release, and which after it.
+An Allow towards one peer applies to that peer only. Without an owner decision a chat's content
+is Allow towards its members only, and a peer's own messages are Allow towards that peer only;
+every other source is Ask. Flags and notices of a vault secret hit name the source, never the
+value. The property covers what a built detector catches: secrets, one-time codes, private
+links, vault secrets by exact value, fingerprints of files, agent context, peer messages, chats
+and third-party memory, source reads, cards and IBANs. `docs/MVP.md` (Source coverage) lists
+which sources are caught in the MVP and by what, which detectors come before the MVP release,
+and which after it.
 - CA-54 A document source is Never towards bob. The agent revises a draft to bob to quote it and
   the owner approves the draft's earlier prompt through `telegram-miniapp-pin`; the quote is
   proposed in a thread under a matching conversation mandate; the owner sets the source to Allow
@@ -320,6 +325,13 @@ which detectors come before the MVP release, and which after it.
   that is Ask towards bob, an API key (secrets Ask towards bob), and a quote of a document that is
   Never towards bob. Result: the two Ask drafts wait in `awaiting_consent` for the owner, the
   Never draft is `blocked`, and none is released.
+- CA-57 Alice's vault secret is Never towards bob; one-time codes keep their fixed Never. The
+  agent revises a draft to bob to carry a verification code (English, Russian, an `otpauth:`
+  URI) or the vault value, and the owner approves the draft's earlier prompt through
+  `telegram-miniapp-pin`; the same texts are proposed in a thread under a matching conversation
+  mandate; the owner sets one-time codes to Allow on the settings page through
+  `telegram-miniapp-pin`. Result: every draft is `blocked` and nothing is released, each text
+  stays blocked under the open mandate, and the change is refused.
 
 Old attack ideas (ADR 0009). The consent-forgery suite CF-1 to CF-15 of the old gate maps to:
 CF-1, CF-6, CF-9 and CF-13 (agent-written approvals, proof fields, evidence) to CA-1, CA-2,

@@ -15,7 +15,9 @@ use crate::draft::{Draft, RequestSeed, Revision};
 use crate::open::{CONVERSATION_TTL_DEFAULT, Candidate};
 use crate::pairing::{Requirement, Verification, VerificationCheck};
 use crate::risk::{self, OutputKind, Required};
-use crate::source::{Access, Change, Decisions, Source, SourceId, SourceRegistry, Surface};
+use crate::source::{
+    Access, Change, Decisions, Source, SourceId, SourceKind, SourceRegistry, Surface,
+};
 
 /// A peer verified by the SAS of a tenant that requires verification: every trust may be granted.
 pub(crate) const VERIFIED: VerificationCheck = VerificationCheck {
@@ -30,6 +32,10 @@ pub(crate) static ASK_ALL: Decisions = Decisions::new();
 pub(crate) const FILES: SourceId = SourceId(1);
 /// A registered MCP mail source.
 pub(crate) const MAIL: SourceId = SourceId(2);
+/// A registered chat of bob (address 2) and carol (address 3), in [`audiences`].
+pub(crate) const CHAT: SourceId = SourceId(3);
+/// The registered messages of bob (address 2), in [`audiences`].
+pub(crate) const BOB_INBOUND: SourceId = SourceId(4);
 /// A document of [`FILES`].
 pub(crate) const DOCUMENT: &str = "The quarterly review found that the merger talks with the northern partner \
     stalled because the valuation gap stayed too wide for both boards to accept.";
@@ -193,6 +199,17 @@ pub(crate) fn settle(reg: &mut SourceRegistry, source: Source, peer: &Address, a
     .unwrap();
 }
 
+/// Tenant 1's registry with [`CHAT`] and [`BOB_INBOUND`] and no owner decisions.
+pub(crate) fn audiences() -> SourceRegistry {
+    let mut reg = SourceRegistry::default();
+    let members = [address(2), address(3)].into_iter().collect();
+    reg.register(&tenant(1), CHAT, SourceKind::Chat { members })
+        .unwrap();
+    reg.register(&tenant(1), BOB_INBOUND, SourceKind::PeerInbound(address(2)))
+        .unwrap();
+    reg
+}
+
 /// A short rendered template revision to `to`.
 pub(crate) fn cand<'a>(to: &'a Address, t: &'a TemplateId, th: &'a ThreadId) -> Candidate<'a> {
     Candidate {
@@ -214,6 +231,7 @@ pub(crate) fn free(text: &str) -> risk::Draft<'_> {
         text,
         kind: OutputKind::FreeText,
         attachments: 0,
+        attachment_text: &[],
         new_recipient: false,
         sources: &[],
         decisions: &ASK_ALL,
