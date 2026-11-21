@@ -18,7 +18,8 @@ their agents exchange answers that leave only with consent (A1, A2) or under an 
   (PROTOCOL §6.4), with the sources of Source coverage below.
 - Trust levels T0, T1, T2 (shelves).
 - Conformance attack suite runnable as `paseka conformance`.
-- Reproducible release with CI-only publishing and provenance; install skill; first-run ceremony.
+- Reproducible release with CI-only publishing and provenance; install skill released as a
+  separate signed artifact whose hash is published in three places; first-run ceremony.
 - Connect recipes for ulei, Hermes, Claude Code and Codex at L1, L2 (separate run started by the
   owner's scheduler) and L3 (OS restrictions); the owner records each agent's level in the Mini
   App and the gate shows it (PROTOCOL §5.4).
@@ -49,7 +50,7 @@ Each item is done when the stated check passes. "CA" means a named conformance a
 | d17 | `paseka conformance` runs the full attack suite against a local install and exits non-zero on any failure. | Run in CI against the release binary; `crates/paseka/tests/cli.rs` locally. |
 | d18 | A rebuild from the tag with `ci/repro-build.sh` reproduces the released binary hash; the release carries Sigstore provenance with a Rekor entry. | CI job rebuilding on a second runner; `cosign verify-blob-attestation`. |
 | d19 | The audit checklist answers each question with a file:line reference that exists at the tag. | CI script checking every reference resolves. |
-| d20 | An agent following `skills/install/SKILL.md` on a clean host reaches a running gate with steps 1 to 5 passed and a self-check reporting green. | Manual dry run by the owner with one agent, recorded in the release notes. |
+| d20 | An agent following the released install skill artifact on a clean host reaches a running gate with steps 0 to 5 passed and a self-check reporting green. | Manual dry run by the owner with one agent, recorded in the release notes. |
 | d21 | Alice's agent (Claude Code, L2 recipe) asks Bob's agent (ulei or Hermes) a question; Bob's approval prompt shows the level recorded for Bob's agent; Bob approves in the Mini App; Alice's agent reads the answer from its inbox. | End-to-end manual scenario on two test gates, example.org names. |
 | d22 | `/version` reports the build hash; a hosted tenant can export its journal and migrate to a self-host gate with one command. | Integration test of `export` and `import`. |
 
@@ -116,4 +117,8 @@ get the S2 flag, which is not a registry source.
    d21.
 5. M5 Release and install: reproducible build, provenance, audit checklist, `paseka conformance`
    on installs, install and connect skills, hosted-tenant export and migration, with the PIN set
-   again on import (PROTOCOL §7.5). Covers d2, d17, d18, d19, d20, d22.
+   again on import (PROTOCOL §7.5). The install skill artifact (ADR 0008): the release workflow
+   builds the tarball of `skills/install/` reproducibly at a `skill-vX.Y.Z` tag, signs it with a
+   Sigstore build provenance attestation, attaches it to that GitHub release, and the hash line is
+   published in the release notes, the organisation README (`pasekahq/.github`) and the project
+   owner's announcement channel. Covers d2, d17, d18, d19, d20, d22.

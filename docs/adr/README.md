@@ -27,7 +27,7 @@ what the gate records and shows, not how the agent is set up.
 | [0005](0005-monotonic-risk-evaluation.md) | Risk evaluation only raises the approval level |
 | [0006](0006-trust-levels-and-shelves.md) | Per-peer trust levels T0 to T3; shelves share by pointer |
 | [0007](0007-multi-tenant-from-day-one.md) | Multi-tenant from day one |
-| [0008](0008-self-host-and-verification-chain.md) | Self-host is the main path; a five-step verification chain |
+| [0008](0008-self-host-and-verification-chain.md) | Self-host is the main path; a verification chain that starts with the install skill |
 | [0009](0009-clean-slate.md) | Clean slate: no compatibility with the old Python gate |
 | [0010](0010-tolerant-readers.md) | Contracts only grow; readers are tolerant |
 | [0011](0011-peer-turn-launch-profile.md) | Peer-turn protection levels are a recommendation the gate records and shows |
