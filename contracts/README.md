@@ -49,6 +49,12 @@ hand: `PASEKA_WRITE_VECTORS=1 cargo test -p paseka-core --lib vectors::` writes 
 seeds, and the same test without the variable fails when a file differs from what the generator
 writes.
 
+`fixtures/vectors/telegram-initdata.json` holds what the Telegram Mini Apps documentation,
+section "Validating data for Third-Party Use", publishes for initData verification (PROTOCOL
+§7.4 steps 1 to 3): the production and test Ed25519 keys in hex and the example of the signed
+text with its bot id. The documentation publishes no signed initData; tests sign the example
+with the test key `alice` of `digests.json`. The file is written by hand from the documentation.
+
 All fixture data is synthetic: alice, bob, carol, example.org.
 
 ## Defaults
@@ -175,6 +181,12 @@ Additive (ADR 0010, ADR 0020), except the last item, made in place before any re
   short authentication string (PROTOCOL §11).
 - `fixtures/vectors/digests.json`: the `sas` vector input gains `inviter` and `invitee`
   addresses, and its value is regenerated under the domain string `paseka/sas/v2`.
+
+### Version 1: Telegram initData vector
+
+Additive (ADR 0022).
+
+- `fixtures/vectors/telegram-initdata.json`: Telegram's documented initData keys and example.
 
 ## Tolerant readers
 

@@ -1,0 +1,11 @@
+{
+  "description": "PROTOCOL 7.4 steps 1 to 3, from the Telegram Mini Apps documentation, section 'Validating data for Third-Party Use': both Ed25519 keys in hex and the documented example of the signed text, bot id 12345678 with placeholders. The documentation publishes no signed initData; tests sign the example with the test key alice of digests.json, never with a Telegram key.",
+  "keys": {
+    "production": "e7bf03a2fa4602af4580703d88dda5bb59f32ed8b02a56c187fe7d34caed242d",
+    "test": "40055058a4ee38156a06562e52eece92a771bcd8346a8c4615cb7376eddf72ec"
+  },
+  "example": {
+    "bot_id": 12345678,
+    "signed_text": "12345678:WebAppData\nauth_date=<auth_date>\nquery_id=<query_id>\nuser=<user>"
+  }
+}

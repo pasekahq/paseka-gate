@@ -541,6 +541,18 @@ bot through which the owner talks to the agent. Updates arrive by webhook (the g
 `X-Telegram-Bot-Api-Secret-Token` in constant time) or by `getUpdates` over TLS with the gate's
 token. The gate MUST deduplicate `update_id`.
 
+Modes:
+
+- Self-host: the tenant's own bot. Every update of that bot belongs to its one tenant.
+- Hosted, shared: one bot of the hosting gate serves many tenants. The gate resolves the tenant
+  only from the signed Telegram user id (`callback_query.from.id`, or `user.id` of initData that
+  passed §7.4 steps 1 to 5) through the approver binding of that bot (TI-5). A Telegram user is
+  an approver of at most one tenant on a shared bot; the gate refuses to bind a user who already
+  approves for another tenant there.
+- Hosted, own bot: a hosted tenant may connect a bot of its own, which then works as in
+  self-host. It isolates the tenant's prompts from other tenants and keeps the bot unchanged
+  when the tenant migrates to self-host (TI-7).
+
 ### 7.3 A1: `telegram-button`
 
 The prompt is a message in the approver's private chat with the consent bot. It contains the
@@ -575,15 +587,15 @@ release digest from the bytes it rendered (WebCrypto) and sends it with the deci
 
 The gate verifies initData as follows; every step MUST pass:
 
-1. Parse as `application/x-www-form-urlencoded`. Reject duplicate keys. Require `auth_date`,
-   `hash`, `signature` and `user`.
+1. Parse as `application/x-www-form-urlencoded` UTF-8. Reject an empty pair, a pair without
+   `=` or with an empty key, a malformed percent escape, and duplicate keys compared after
+   decoding. Require `auth_date` (Unix seconds), `hash`, `signature` and `user`.
 2. Build the data-check-string: all pairs except `hash` and `signature`, as `key=value` with
    decoded values, sorted by key bytes, joined with `\n`.
 3. Ed25519 (Bot API 8.0 third-party validation): verify `b64u-decode(signature)` over
-   `<bot_id>:WebAppData\n<data-check-string>` with Telegram's public key for the configured
-   environment, where `bot_id` is the tenant's consent bot id. The keys are pinned in the binary
-   from the Bot API documentation (production `e7bf03a2fa4602af4580703d88dda5bb59f32ed8b02a56c187fe7d34caed242d`;
-   the test environment key only when the gate is configured for it).
+   `<bot_id>:WebAppData\n<data-check-string>` with the Telegram key of the configured
+   environment, where `bot_id` is the id of the consent bot that sent the prompt. Steps 1 to 3
+   are `paseka_core::initdata::InitData::verify`.
 4. HMAC: `secret = HMAC-SHA-256(key = "WebAppData", msg = bot_token)`; `hash` MUST equal
    `hex(HMAC-SHA-256(key = secret, msg = data-check-string))`, compared in constant time. The
    HMAC alone is never sufficient (CA-16).
@@ -595,6 +607,21 @@ The gate verifies initData as follows; every step MUST pass:
    window and rejects reuse (CA-11). Review fetches do not consume it.
 8. `request_id` and `nonce` identify a live request of the tenant (§7.1), `release_digest`
    equals the stored one, and `telegram-miniapp` may decide the request (§7.1 item 4).
+
+Telegram keys (`paseka_core::initdata::TelegramKeys`): the gate config holds the Telegram
+environment of each consent bot, `production` or `test`, and one Ed25519 key per environment,
+as 64 hex characters. Step 3 uses the key of the bot's environment, never the other one. The
+defaults are the keys of the Telegram Mini Apps documentation, section "Validating data for
+Third-Party Use":
+
+| Environment | Default key (hex) | Code |
+|---|---|---|
+| `production` | `e7bf03a2fa4602af4580703d88dda5bb59f32ed8b02a56c187fe7d34caed242d` | `initdata::TELEGRAM_PRODUCTION_KEY_HEX` |
+| `test` | `40055058a4ee38156a06562e52eece92a771bcd8346a8c4615cb7376eddf72ec` | `initdata::TELEGRAM_TEST_KEY_HEX` |
+
+`contracts/fixtures/vectors/telegram-initdata.json` holds both keys and the documented example
+of the signed text. The keys and the environment are security settings (§9.4) with their own
+change rule there.
 
 With `edited_body` the gate creates a new owner-authored revision, re-evaluates it (§6.2), and,
 if nothing blocks and the channel may decide the new revision's request, treats the decision as
@@ -828,9 +855,20 @@ requirement for trust above T1 (§11) are security settings. After the first-run
 ceremony they change only through an owner decision in the Mini App at A2 or higher, journaled
 with evidence. The bootstrap config is read only before the ceremony; later differences are
 reported to the owner and ignored (CA-23). The PIN and its kind change only as §7.5 states:
-through consent with the old PIN, or by the local CLI on the gate host. The tripwire mode does
+through consent with the old PIN, or by the local CLI on the gate host. The Telegram keys and
+environment (§7.4) change only through an owner decision at A2 or higher, verified with the
+current key, or by the local CLI on the gate host, run as the gate's unix user (TB-5); never by
+editing the config after the ceremony. Every consent decision is verified with that key, so a
+change that needed only consent could not recover from a wrong or rotated key: the local CLI
+is the path that does not depend on it. The tripwire mode does
 not change while tripwire mode is active; only a clear with A2+ ends it (§4.3). A registry
 decision that sets or lifts Never is made only on the settings page (§6.4).
+
+First-run ceremony: the gate serves no release (`unavailable`, §5.3) until the owner confirms
+the plain-words config in the Mini App of the tenant's consent bot. The confirmation is a live
+decision whose initData passes §7.4 steps 1 to 6 with the configured key and bot id; with no
+such decision setup does not complete, so a wrong key, environment or bot id stops the setup
+instead of every later approval.
 
 ## 10. Gate-to-gate wire
 
@@ -1125,8 +1163,9 @@ Invariants:
   class).
 - TI-4 Identity keys, bot tokens, dictionaries, canaries, shelves, templates, policies, journals
   and counters are per tenant. No cache is shared without the tenant in its key.
-- TI-5 A shared consent bot (hosted mode) resolves the tenant from the nonce or request id and
-  then requires the Telegram user to be an approver of that tenant (CA-39).
+- TI-5 A shared consent bot (hosted mode, §7.2) resolves the tenant only from the signed
+  Telegram user id and the approver binding of that bot. A nonce or request id only selects a
+  request inside that tenant; one of another tenant behaves as nonexistent (TI-3, CA-39).
 - TI-6 Rate limits, storage quotas and queue sizes are per tenant.
 - TI-7 Journal export and migration to self-host export one tenant: its key, settings, peers,
   journal; never its PIN pepper or verifier (§7.5). Peers keep working because the address stays

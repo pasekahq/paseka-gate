@@ -41,3 +41,4 @@ what the gate records and shows, not how the agent is set up.
 | [0019](0019-open-mandates-never-widen-the-source-registry.md) | Open mandates, conversation trust included, never widen the source registry |
 | [0020](0020-pairing-sas-and-unverified-peers-capped-at-t1.md) | The pairing SAS binds both addresses; trust above T1 needs a verified peer unless the owner turns that off |
 | [0021](0021-registry-detectors-and-audience-defaults.md) | One-time codes, vault secrets, private links and chats are registry detectors; chats and own messages default to Allow towards their audience |
+| [0022](0022-telegram-keys-in-config-and-consent-bot-modes.md) | Telegram keys are config settings checked live at the ceremony; a shared consent bot resolves the tenant by the signed user id |
